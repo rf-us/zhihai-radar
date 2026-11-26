@@ -162,3 +162,33 @@ P1：用于判断采纳的产品是否已经投产。
 | 403 | 角色不足 | 采纳预检阶段就应拦住，提示"需要管理员账号" |
 | 404 | 对象不存在 | 刷新回读面板 |
 | 5xx | RFERP 内部错误 | 不自动重试写操作；读操作可重试一次 |
+
+## 附：实测记录（2026-11-26）
+
+在 `Wu-Wh0/RFERP@4d73ae7` 源码构建的 `cmd/server`（SQLite）上逐条跑过，不是照文档抄的：
+
+| 步骤 | 结果 |
+|---|---|
+| `GET /api/v1/serverinfo` | `{"appVersion":"dev","apiVersion":1,"schemaVersion":13,"databaseId":"f481…","storage":"sqlite"}` |
+| `POST /api/bootstrap-admin` | 200，返回 `{"id":1,...,"role":"admin"}` |
+| `POST /api/login` | 200，token 为 48 字符 |
+| `GET /api/me` | 200，`role=admin` |
+| `POST /api/parts` | 200；响应里 `version=0`、时间戳为零值，需重新拉列表 |
+| `POST /api/products` | 200，`spec` 原样保留 |
+| `POST /api/products` 多传 `operator` | **400** `invalid body: json: unknown field "operator"` |
+| `POST /api/bom` | 200；`GET /api/bom?product_id=` 返回带 `part_code/part_name` |
+| `DELETE /api/products?id=` | 200 `{"status":"ok"}` |
+| 删除后 `GET /api/products` | **`null`**（不是 `[]`） |
+
+三个"只有跑起来才敢确信"的点，全部命中：
+
+1. `serverinfo` 是 **camelCase**，且 `apiVersion` 是**整数**；
+2. `POST /api/products` 的 `DisallowUnknownFields` 会拒绝任何多余字段；
+3. 零行列表返回 **`null`**，客户端必须兜住，否则前端 `.map` 白屏。
+
+复现方式：
+
+```bash
+REEF_BASE=http://127.0.0.1:8080 REEF_USER=admin REEF_PASS=*** \
+  go test ./internal/reef -tags=live -v
+```

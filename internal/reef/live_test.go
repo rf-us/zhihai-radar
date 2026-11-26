@@ -1,0 +1,117 @@
+//go:build live
+
+// 真 RFERP 的契约测试。默认不跑（没有真实例时应该跳过而不是失败）。
+//
+// 运行方式：
+//
+//	REEF_BASE=http://127.0.0.1:8080 REEF_USER=admin REEF_PASS=*** \
+//	  go test ./internal/reef -tags=live -v
+//
+// 它会真的建一个产品、加一条 BOM、再删掉。**不要指向生产库**：
+// 编码用时间戳生成，删除在 cleanup 里保证执行，但中途断网仍可能留下一条。
+package reef
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestLiveContract(t *testing.T) {
+	base := os.Getenv("REEF_BASE")
+	user := os.Getenv("REEF_USER")
+	pass := os.Getenv("REEF_PASS")
+	if base == "" || user == "" || pass == "" {
+		t.Skip("未设置 REEF_BASE / REEF_USER / REEF_PASS，跳过真实例契约测试")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	c := New(base)
+
+	info, err := c.Probe(ctx)
+	if err != nil {
+		t.Fatalf("serverinfo: %v", err)
+	}
+	t.Logf("RFERP app=%s api=%d schema=%d storage=%s db=%s",
+		info.AppVersion, info.APIVersion, info.SchemaVersion, info.Storage, info.DatabaseID)
+	if info.APIVersion != SupportedAPIVersion {
+		t.Fatalf("接口版本 %d 与 radar 验证过的 %d 不一致", info.APIVersion, SupportedAPIVersion)
+	}
+
+	sess, err := c.Login(ctx, user, pass)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	me, err := c.Me(ctx, sess.Token)
+	if err != nil {
+		t.Fatalf("me: %v", err)
+	}
+	if me.Role != RoleAdmin {
+		t.Skipf("当前账号角色是 %s，建产品会被 403 拒绝，跳过写操作", me.Role)
+	}
+
+	parts, err := c.ListParts(ctx, sess.Token)
+	if err != nil {
+		t.Fatalf("list parts: %v", err)
+	}
+	t.Logf("零件 %d 个", len(parts))
+
+	code := fmt.Sprintf("OPP-LIVE-%d", time.Now().Unix())
+	marker := Marker(999999)
+	product, err := c.CreateProduct(ctx, sess.Token, CreateProductInput{
+		Code: code, Name: "契约测试产品", Spec: marker, Unit: "台", Status: 1,
+	})
+	if err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := c.DeleteProduct(cleanupCtx, sess.Token, product.ID); err != nil {
+			t.Logf("清理失败，请手工删除产品 %d：%v", product.ID, err)
+		}
+	})
+	if product.ID == 0 {
+		t.Fatal("创建产品未返回 id")
+	}
+	if product.Spec == nil || *product.Spec != marker {
+		t.Fatalf("spec 溯源标记未保留: %v", product.Spec)
+	}
+
+	// 列表里要能按 code 找到它——采纳前的去重就靠这个。
+	products, err := c.ListProducts(ctx, sess.Token)
+	if err != nil {
+		t.Fatalf("list products: %v", err)
+	}
+	found := false
+	for _, p := range products {
+		if p.Code == code {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("新建的产品没有出现在列表里（code=%s）", code)
+	}
+
+	if len(parts) == 0 {
+		t.Log("没有零件，跳过 BOM 写入")
+		return
+	}
+	item, err := c.AddBOMItem(ctx, sess.Token, BOMInput{
+		ProductID: product.ID, PartID: parts[0].ID, Quantity: 1, LossRate: 0, UseMode: 0,
+	})
+	if err != nil {
+		t.Fatalf("add bom: %v", err)
+	}
+	bom, err := c.GetBOM(ctx, sess.Token, product.ID)
+	if err != nil {
+		t.Fatalf("get bom: %v", err)
+	}
+	if len(bom) != 1 || bom[0].ID != item.ID {
+		t.Fatalf("BOM 读回不一致: %+v", bom)
+	}
+}
