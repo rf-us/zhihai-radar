@@ -1,0 +1,164 @@
+# RFERP 接口契约（radar 依赖面）
+
+> 基线：`Wu-Wh0/RFERP` @ `4d73ae7`（2026-10-21）
+> 本文件是 radar 与 RFERP 之间的**唯一约定**。radar 不读 RFERP 的数据库、不复用其源码。
+
+## 0. 总则
+
+- 所有请求与响应均为 `application/json; charset=utf-8`。
+- 鉴权：`Authorization: Bearer <token>`，token 来自 `POST /api/login`。
+- 错误统一为 `{"error": "..."}`，HTTP 状态码表达类别。
+- **会话有效期：绝对 24h / 空闲 4h。** 到期后返回 401，radar 必须重新登录。
+- RFERP 不设置 CORS 头，因此**只能由 radar 服务端调用**，浏览器不得直连。
+
+## 1. 连接探测
+
+```
+GET /api/v1/serverinfo          （免登录）
+```
+
+```json
+{
+  "appVersion": "2.3.0",
+  "apiVersion": 1,
+  "schemaVersion": 13,
+  "databaseId": "db-7f3c...",
+  "storage": "sqlite"
+}
+```
+
+注意字段是 **camelCase**，且 `apiVersion` 是**整数**，不是字符串。
+
+用途：
+1. 连接页的"测试连接"；
+2. 版本兼容判断（`apiVersion != 1` 时告警但放行）；
+3. 采纳记录里保存 `databaseId`，避免连错实例。
+
+## 2. 登录
+
+```
+POST /api/login
+{"username":"admin","password":"..."}
+```
+
+```json
+{"token":"...", "user":{"id":1,"username":"admin","display_name":"管理员","role":"admin"}}
+```
+
+`role` 取值：`admin` / `warehouse` / `production` / `viewer`。
+
+## 3. 当前用户
+
+```
+GET /api/me                      （需登录）
+```
+
+用于采纳前确认角色：**建产品、建 BOM、删产品都要求 `admin`**。
+
+## 4. 零件列表
+
+```
+GET /api/parts                   （需 Catalog.ListParts，四角色可读）
+```
+
+```json
+[{"id":3,"code":"P-001","name":"不锈钢滤网","spec":"120目","unit":"个",
+  "part_type":"五金","stock_qty":120,"warn_qty":20,"status":1,"version":1,
+  "supplier":"某供应商"}]
+```
+
+**空列表可能返回 `null` 而不是 `[]`**（Go 的 nil slice）。radar 必须容忍。
+
+## 5. 产品列表
+
+```
+GET /api/products                （需 Catalog.ListProducts）
+```
+
+同上的 `null` 问题。用于两件事：采纳去重、建产品超时后的不确定态核对。
+
+## 6. 建产品
+
+```
+POST /api/products               （需 Catalog.CreateProduct，仅 admin）
+```
+
+请求体**只允许**这七个字段：
+
+```json
+{"code":"OPP-7","name":"便携咖啡机","spec":"来源：知乎选品雷达 #7","unit":"台","status":1}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `code` | string | 产品编码。**允许重复**（它是系列号），去重由 radar 负责 |
+| `name` | string | 产品名 |
+| `spec` | string? | 规格。radar 用它写溯源信息 |
+| `unit` | string | 单位 |
+| `status` | int? | `1` 启用 / `2` 停用，缺省 1 |
+| `id` | int64 | 仅更新时用 |
+| `version` | int | 仅更新时用（乐观锁） |
+
+> ⚠️ 服务端使用 `json.Decoder.DisallowUnknownFields()`。**多传任何字段（包括 `operator`、
+> `created_at`、`source`）都会返回 `400 invalid body: json: unknown field "xxx"`。**
+
+响应为创建后的完整产品对象，含 `id` 与 `version`。
+
+## 7. 删产品（补偿用）
+
+```
+DELETE /api/products?id=42       （需 Catalog.DeleteProduct，仅 admin）
+```
+
+BOM 随外键 `ON DELETE CASCADE` 一并删除。用于采纳失败时的回滚。
+若产品已被批次引用，删除会被拒绝——此时应转人工处理。
+
+## 8. 建 BOM
+
+```
+POST /api/bom                    （需 Catalog.AddBOMItem，仅 admin）
+{"product_id":42,"part_id":3,"quantity":2,"loss_rate":3,"use_mode":0,"replaceable":0}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `quantity` | 单台用量；`use_mode=1` 时表示"每 M 台用 1 个"的 M |
+| `loss_rate` | 损耗率百分比，0–100 |
+| `use_mode` | `0` 每台用 N 个 / `1` 每 M 台用 1 个 |
+| `replaceable` | 是否可替换，radar 固定传 0 |
+
+BOM 是**逐条插入**，没有批量接口，因此需要 Saga 补偿。
+
+## 9. 查 BOM
+
+```
+GET /api/bom?product_id=42       （需 Catalog.GetBOMByProduct）
+```
+
+用于"已同步到 RFERP"面板回读。
+
+## 10. 产品详情
+
+```
+GET /api/products/get?id=42      （需 Catalog.GetProduct）
+```
+
+不存在时返回 `404 {"error":"product not found"}`。
+
+## 11. 批次列表（可选）
+
+```
+GET /api/batches                 （需 Production.ListBatches）
+```
+
+P1：用于判断采纳的产品是否已经投产。
+
+## 附：错误码与 radar 的处置
+
+| 状态 | 含义 | radar 处置 |
+|---|---|---|
+| 400 | 业务校验失败 | 把 `error` 原文展示给用户（RFERP 的中文提示比自编的更有用） |
+| 401 | 会话失效 | 丢弃内存 token，提示重新登录 |
+| 403 | 角色不足 | 采纳预检阶段就应拦住，提示"需要管理员账号" |
+| 404 | 对象不存在 | 刷新回读面板 |
+| 5xx | RFERP 内部错误 | 不自动重试写操作；读操作可重试一次 |

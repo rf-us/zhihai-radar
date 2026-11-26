@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test ./... -race -count=1
+
+  # 真 RFERP 的契约测试。需要仓库 secret REEF_BASE / REEF_USER / REEF_PASS。
+  # 没有配置时整步跳过——默认 CI 只跑 httptest 假 RFERP。
+  contract-live:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && vars.REEF_LIVE == '1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: live contract
+        env:
+          REEF_BASE: ${{ secrets.REEF_BASE }}
+          REEF_USER: ${{ secrets.REEF_USER }}
+          REEF_PASS: ${{ secrets.REEF_PASS }}
+        run: go test ./internal/reef -tags=live -count=1

@@ -1,0 +1,26 @@
+# 构建产物
+/bin/
+*.exe
+*.test
+*.out
+
+# 本地数据与缓存
+/data/
+/tmp/
+*.db
+*.db-shm
+*.db-wal
+
+# 前端
+web/node_modules/
+web/.vite/
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# 本地配置（可能含密钥）
+config.local.json
+.env
