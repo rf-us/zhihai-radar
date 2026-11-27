@@ -16,6 +16,11 @@ import (
 // handleAdoptPreview POST /api/opportunities/{id}/adopt/preview
 // 只读预检：将要创建什么、编码是否冲突、需要管理员权限。
 func (s *Server) handleAdoptPreview(w http.ResponseWriter, r *http.Request, sess *session) {
+	// 预检阶段就拦非管理员：不要等用户点"采纳"才 403（issue #6 验收）。
+	if !s.canAdopt(sess) {
+		writeErr(w, http.StatusForbidden, "采纳预检需要管理员账号")
+		return
+	}
 	in, err := s.buildAdoptInput(r.Context(), sess, r.PathValue("id"))
 	if err != nil {
 		writeAdoptErr(w, err)
@@ -36,7 +41,7 @@ func (s *Server) handleAdopt(w http.ResponseWriter, r *http.Request, sess *sessi
 		writeErr(w, http.StatusForbidden, "当前为只读演示模式，已采纳写回被禁用")
 		return
 	}
-	if sess.user.Role != reef.RoleAdmin {
+	if !s.canAdopt(sess) {
 		writeErr(w, http.StatusForbidden, "采纳需要管理员账号")
 		return
 	}
@@ -131,4 +136,9 @@ func writeAdoptErr(w http.ResponseWriter, err error) {
 	default:
 		writeErr(w, http.StatusBadRequest, err.Error())
 	}
+}
+
+// canAdopt 是采纳的统一门禁：只读模式与非管理员都在预检阶段就拦住。
+func (s *Server) canAdopt(sess *session) bool {
+	return !s.cfg.ReadOnly && sess != nil && sess.user.Role == reef.RoleAdmin
 }

@@ -115,3 +115,23 @@ func TestAdoptBlockedInReadOnlyMode(t *testing.T) {
 		t.Fatalf("只读模式应 403：%d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAdoptPreviewRejectsNonAdmin(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "radar.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	_ = st.Migrate(context.Background())
+	s := New(config.Config{Source: "fixture"}, st)
+	const sid = "viewer-session"
+	s.sessions[sid] = &session{token: "t", user: reef.User{Role: "warehouse"}, expires: time.Now().Add(time.Hour)}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/opportunities/1/adopt/preview", strings.NewReader(""))
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "管理员") {
+		t.Fatalf("非管理员预检应 403：%d %s", rec.Code, rec.Body.String())
+	}
+}
