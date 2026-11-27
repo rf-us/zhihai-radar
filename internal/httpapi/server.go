@@ -103,6 +103,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/opportunities/{id}/cost", s.requireSession(s.handleDeleteCost))
 	// 报告导出（issue #8）
 	mux.HandleFunc("GET /api/opportunities/{id}/report", s.requireSession(s.handleExportReport))
+	// 采纳写回 RFERP（issue #6：建零件 + 写供应商）
+	mux.HandleFunc("POST /api/opportunities/{id}/adopt/preview", s.requireSession(s.handleAdoptPreview))
+	mux.HandleFunc("POST /api/opportunities/{id}/adopt", s.requireSession(s.handleAdopt))
 	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
 	return s.withLogging(mux)
 }

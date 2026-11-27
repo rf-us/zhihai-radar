@@ -21,6 +21,16 @@ type BOMLine struct {
 	Qty      float64
 	LossRate float64
 	UseMode  int
+	// PartRef 指向 Parts 里的零件名；PartID 为 0 时用它匹配新建的零件。
+	PartRef string
+}
+
+// PartSpec 是采纳时要新建的零件。Supplier 来自选定的供应链报价。
+type PartSpec struct {
+	Name     string
+	Code     string
+	Unit     string
+	Supplier string
 }
 
 type AdoptInput struct {
@@ -29,14 +39,17 @@ type AdoptInput struct {
 	Name          string
 	Unit          string
 	Lines         []BOMLine
+	// Parts 非空时，先建零件再建 BOM；PartRef 与 Parts[i].Name 对应。
+	Parts []PartSpec
 }
 
 type AdoptResult struct {
-	Status     string `json:"status"`
-	ProductID  int64  `json:"product_id,omitempty"`
-	BOMCreated int    `json:"bom_created"`
-	BOMSkipped int    `json:"bom_skipped"`
-	Message    string `json:"message,omitempty"`
+	Status       string `json:"status"`
+	ProductID    int64  `json:"product_id,omitempty"`
+	BOMCreated   int    `json:"bom_created"`
+	BOMSkipped   int    `json:"bom_skipped"`
+	PartsCreated int    `json:"parts_created,omitempty"`
+	Message      string `json:"message,omitempty"`
 }
 
 // Marker 是写进产品 spec 的溯源标记。
@@ -101,7 +114,54 @@ func (c *Client) Adopt(ctx context.Context, token string, in AdoptInput) (AdoptR
 		}
 	}
 
-	for _, line := range in.Lines {
+	// 建零件（可选）：选定供应商的报价带过来，写进 RFERP 的 parts.supplier。
+	// 建零件失败同样删产品回滚——此时产品还没有 BOM，也没有批次引用。
+	partIDs := make(map[string]int64, len(in.Parts))
+	for i, spec := range in.Parts {
+		name := strings.TrimSpace(spec.Name)
+		if name == "" {
+			continue
+		}
+		code := strings.TrimSpace(spec.Code)
+		if code == "" {
+			code = fmt.Sprintf("P-%d-%d", in.OpportunityID, i+1)
+		}
+		unit := strings.TrimSpace(spec.Unit)
+		if unit == "" {
+			unit = "个"
+		}
+		var supplier *string
+		if s := strings.TrimSpace(spec.Supplier); s != "" {
+			supplier = &s
+		}
+		part, err := c.CreatePart(ctx, token, CreatePartInput{
+			Code: code, Name: name, Unit: unit, Supplier: supplier,
+		})
+		if err != nil {
+			delErr := c.DeleteProduct(ctx, token, product.ID)
+			if delErr != nil {
+				res.Status = StatusPartial
+				res.ProductID = product.ID
+				res.Message = fmt.Sprintf("建零件失败（%v），回滚也失败（%v）：产品 %d 需手工删除", err, delErr, product.ID)
+				return res, err
+			}
+			res.Status = StatusRolledBack
+			res.Message = fmt.Sprintf("建零件失败（%v），已删除刚创建的产品 %d", err, product.ID)
+			return res, err
+		}
+		partIDs[name] = part.ID
+		res.PartsCreated++
+	}
+
+	lines := make([]BOMLine, len(in.Lines))
+	copy(lines, in.Lines)
+	for i := range lines {
+		if lines[i].PartID <= 0 && lines[i].PartRef != "" {
+			lines[i].PartID = partIDs[lines[i].PartRef]
+		}
+	}
+
+	for _, line := range lines {
 		if line.PartID <= 0 {
 			// 手填的临时零件只参与毛利测算，不进 BOM。
 			res.BOMSkipped++
@@ -152,15 +212,17 @@ type AdoptPreview struct {
 	CodeTaken     bool   `json:"code_taken"`
 	BOMCount      int    `json:"bom_count"`
 	BOMSkipped    int    `json:"bom_skipped"`
+	PartsToCreate int    `json:"parts_to_create"`
 }
 
 func (c *Client) AdoptPreview(ctx context.Context, token string, in AdoptInput) (AdoptPreview, error) {
 	in = in.normalized()
 	out := AdoptPreview{
-		Code:   in.Code,
-		Name:   in.Name,
-		Unit:   in.Unit,
-		Marker: Marker(in.OpportunityID),
+		Code:          in.Code,
+		Name:          in.Name,
+		Unit:          in.Unit,
+		Marker:        Marker(in.OpportunityID),
+		PartsToCreate: len(in.Parts),
 	}
 	for _, line := range in.Lines {
 		if line.PartID <= 0 {

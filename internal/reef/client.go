@@ -225,3 +225,34 @@ func errorMessage(raw []byte, fallback string) string {
 	}
 	return fallback
 }
+
+// CreatePartInput 是新建零件的输入。字段与 RFERP POST /api/parts 的契约一致；
+// Supplier 来自选定的供应链报价，Status 省略时服务端补「启用」。
+type CreatePartInput struct {
+	Code     string  `json:"code"`
+	Name     string  `json:"name"`
+	Spec     *string `json:"spec,omitempty"`
+	Unit     string  `json:"unit"`
+	PartType *string `json:"part_type,omitempty"`
+	StockQty float64 `json:"stock_qty"`
+	WarnQty  float64 `json:"warn_qty"`
+	Supplier *string `json:"supplier,omitempty"`
+}
+
+// CreatePart 在 RFERP 建一个零件，返回带 ID 的实体。
+func (c *Client) CreatePart(ctx context.Context, token string, in CreatePartInput) (Part, error) {
+	var out Part
+	raw, err := c.do(ctx, "create part", http.MethodPost, "/api/parts", token, in)
+	if err != nil {
+		return out, err
+	}
+	// 契约坑：POST /api/parts 返回的 version=0、时间戳为零值，必须重新拉列表拿完整实体。
+	// 这里先用响应里的 id；调用方建 BOM 只需要 id。
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return out, fmt.Errorf("reef: decode create part: %w", err)
+	}
+	if out.ID <= 0 {
+		return out, fmt.Errorf("reef: create part returned no id")
+	}
+	return out, nil
+}
