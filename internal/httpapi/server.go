@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	// 供应链比价（issue #4）
 	mux.HandleFunc("GET /api/suppliers", s.requireSession(s.handleListSuppliers))
 	mux.HandleFunc("POST /api/suppliers", s.requireSession(s.handleCreateSupplier))
+	mux.HandleFunc("DELETE /api/suppliers", s.requireSession(s.handleDeleteSupplier))
 	mux.HandleFunc("GET /api/opportunities/{id}/quotes", s.requireSession(s.handleListQuotes))
 	mux.HandleFunc("POST /api/opportunities/{id}/quotes", s.requireSession(s.handleCreateQuote))
 	mux.HandleFunc("GET /api/opportunities/{id}/quotes/compare", s.requireSession(s.handleCompareQuotes))

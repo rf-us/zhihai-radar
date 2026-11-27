@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,4 +132,30 @@ func TestSupplyRequiresSession(t *testing.T) {
 
 func itoa(n int64) string {
 	return fmt.Sprintf("%d", n)
+}
+
+func TestDeleteQuotedSupplierReturns409(t *testing.T) {
+	s, oid := newSupplyTestServer(t)
+	// 建供应商 + 引用它的报价
+	body, _ := json.Marshal(map[string]string{"name": "被引用供应商"})
+	rec := s.doSupply(t, http.MethodPost, "/api/suppliers", string(body))
+	var sup map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &sup)
+	sid := int64(sup["id"].(float64))
+
+	qb, _ := json.Marshal(map[string]any{
+		"supplier_id": sid, "part_name": "x", "unit_price": 10, "currency": "CNY", "moq": 1,
+	})
+	rec = s.doSupply(t, http.MethodPost, "/api/opportunities/"+itoa(oid)+"/quotes", string(qb))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("建报价失败：%d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = s.doSupply(t, http.MethodDelete, "/api/suppliers?id="+itoa(sid), "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("应 409，got %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), itoa(oid)) {
+		t.Fatalf("409 应列出引用它的机会 ID：%s", rec.Body.String())
+	}
 }

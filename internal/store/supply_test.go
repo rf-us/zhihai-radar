@@ -83,9 +83,11 @@ func TestSupplierQuotesCRUDAndSelect(t *testing.T) {
 		t.Fatalf("selected 数量 = %d，想要 1", selected)
 	}
 
-	// 有报价引用时删除供应商应报 ErrQuoted。
-	if err := st.DeleteSupplier(ctx, s2.ID); !errors.Is(err, ErrQuoted) {
-		t.Fatalf("删除被引用供应商应报 ErrQuoted，got %v", err)
+	// 有报价引用时删除供应商应报 ErrQuoted，并列出引用它的机会。
+	err = st.DeleteSupplier(ctx, s2.ID)
+	var quoted *ErrQuoted
+	if !errors.As(err, &quoted) || len(quoted.OpportunityIDs) != 1 || quoted.OpportunityIDs[0] != oid {
+		t.Fatalf("应报带机会 ID 的 ErrQuoted，got %v", err)
 	}
 }
 

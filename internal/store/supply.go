@@ -13,7 +13,14 @@ import (
 )
 
 // ErrQuoted 是删除供应商时仍有报价引用的冲突（HTTP 层映射成 409）。
-var ErrQuoted = errors.New("store: supplier is quoted")
+// 携带引用它的机会 ID，供界面说明"哪些机会还在用这家供应商"。
+type ErrQuoted struct {
+	OpportunityIDs []int64
+}
+
+func (e *ErrQuoted) Error() string {
+	return fmt.Sprintf("store: supplier is quoted by opportunities %v", e.OpportunityIDs)
+}
 
 // CreateSupplier 新增供应商。
 func (s *Store) CreateSupplier(ctx context.Context, in supply.Supplier) (supply.Supplier, error) {
@@ -52,14 +59,26 @@ func (s *Store) ListSuppliers(ctx context.Context) ([]supply.Supplier, error) {
 
 // DeleteSupplier 删除未被报价引用的供应商；有引用时返回 ErrQuoted。
 func (s *Store) DeleteSupplier(ctx context.Context, id int64) error {
-	var n int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM supplier_quote WHERE supplier_id=?`, id).Scan(&n); err != nil {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT opportunity_id FROM supplier_quote WHERE supplier_id=?`, id)
+	if err != nil {
 		return err
 	}
-	if n > 0 {
-		return ErrQuoted
+	var ids []int64
+	for rows.Next() {
+		var oid int64
+		if err := rows.Scan(&oid); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, oid)
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM supplier WHERE id=?`, id)
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return &ErrQuoted{OpportunityIDs: ids}
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM supplier WHERE id=?`, id)
 	return err
 }
 

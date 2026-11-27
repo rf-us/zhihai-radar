@@ -138,6 +138,27 @@ func (s *Server) handleSelectQuote(w http.ResponseWriter, r *http.Request, _ *se
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleDeleteSupplier DELETE /api/suppliers?id=
+func (s *Server) handleDeleteSupplier(w http.ResponseWriter, r *http.Request, _ *session) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := s.st.DeleteSupplier(r.Context(), id); err != nil {
+		var quoted *store.ErrQuoted
+		if errors.As(err, &quoted) {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": "供应商仍被报价引用，不能删除", "opportunity_ids": quoted.OpportunityIDs,
+			})
+			return
+		}
+		writeServerErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // decodeJSON 统一 JSON 解码：拒绝未知字段，错误体归一化。
 func decodeJSON(r *http.Request, dst any) error {
 	dec := json.NewDecoder(r.Body)
