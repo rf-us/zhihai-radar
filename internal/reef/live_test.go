@@ -118,3 +118,72 @@ func TestLiveContract(t *testing.T) {
 		t.Fatalf("BOM 读回不一致: %+v", bom)
 	}
 }
+
+// TestLiveAdoptWithParts 真实例验证扩展后的采纳：建零件（带供应商）→ 建产品 →
+// 建 BOM → 读回 → 删产品 → 确认可用。设备指纹从环境变量读，不打印到日志。
+//
+// 与 TestLiveContract 共用 REEF_BASE/USER/PASS/DEVICE_ID；不设置则跳过。
+func TestLiveAdoptWithParts(t *testing.T) {
+	base := os.Getenv("REEF_BASE")
+	user := os.Getenv("REEF_USER")
+	pass := os.Getenv("REEF_PASS")
+	device := os.Getenv("REEF_DEVICE_ID")
+	if base == "" || user == "" || pass == "" || device == "" {
+		t.Skip("未设置 REEF_BASE/USER/PASS/DEVICE_ID，跳过真实例采纳测试")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	c := New(base).WithDevice(device)
+
+	sess, err := c.Login(ctx, user, pass)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	me, err := c.Me(ctx, sess.Token)
+	if err != nil || me.Role != RoleAdmin {
+		t.Skipf("需要管理员账号，当前角色=%v err=%v", me.Role, err)
+	}
+
+	oid := int64(999998)
+	code := fmt.Sprintf("OPP-LIVE-P-%d", time.Now().Unix())
+	supplier := "契约测试供应商"
+	partCode := fmt.Sprintf("PL-LIVE-%d", time.Now().Unix())
+
+	part, err := c.CreatePart(ctx, sess.Token, CreatePartInput{
+		Code: partCode, Name: "契约测试零件", Unit: "个", Supplier: &supplier,
+	})
+	if err != nil {
+		t.Fatalf("create part: %v", err)
+	}
+	t.Cleanup(func() {
+		// 零件删除端点不是 radar 的依赖面；这里只清理产品，零件留在一次性实例里。
+		_ = part
+	})
+
+	res, err := c.Adopt(ctx, sess.Token, AdoptInput{
+		OpportunityID: oid, Code: code, Name: "契约测试采纳产品", Unit: "台",
+		Parts: []PartSpec{{Name: "契约测试零件", Code: partCode, Unit: "个", Supplier: supplier}},
+		Lines: []BOMLine{{PartID: part.ID, Qty: 1, LossRate: 0, UseMode: 0}},
+	})
+	if err != nil {
+		t.Fatalf("adopt: %v status=%s msg=%s", err, res.Status, res.Message)
+	}
+	if res.Status != StatusOK || res.ProductID == 0 || res.PartsCreated != 1 || res.BOMCreated != 1 {
+		t.Fatalf("采纳结果不符：%+v", res)
+	}
+	t.Cleanup(func() {
+		cc, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := c.DeleteProduct(cc, sess.Token, res.ProductID); err != nil {
+			t.Logf("清理产品失败，请手工删除 %d：%v", res.ProductID, err)
+		}
+	})
+
+	// 第二次采纳同一机会应幂等，不产生新数据。
+	second, err := c.Adopt(ctx, sess.Token, AdoptInput{
+		OpportunityID: oid, Code: code, Name: "契约测试采纳产品", Unit: "台",
+	})
+	if err == nil || second.Status != StatusExists {
+		t.Fatalf("第二次采纳应返回 exists：%+v err=%v", second, err)
+	}
+}

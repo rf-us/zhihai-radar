@@ -44,10 +44,29 @@ type Server struct {
 	reef     *reef.Client
 	analyzer *service.Analyzer
 
+	// reefStatus 由托管模式注入，供 /api/reef/status 展示子进程状态（down/exitCode）。
+	// 外部模式为 nil，此时状态只探测 reef 连通性。
+	reefStatus func() map[string]any
+
 	mu       sync.Mutex
 	sessions map[string]*session
+	limiter  *rateLimiter
 
 	now func() time.Time
+}
+
+// WithReefStatus 注入托管运行状态（仅 main 在托管模式调用）。
+func WithReefStatus(f func() map[string]any) func(*Server) {
+	return func(s *Server) { s.reefStatus = f }
+}
+
+// NewWithOptions 在 New 基础上应用可选装配；测试与 main 都可用。
+func NewWithOptions(cfg config.Config, st *store.Store, opts ...func(*Server)) *Server {
+	s := New(cfg, st)
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func New(cfg config.Config, st *store.Store) *Server {
@@ -58,20 +77,39 @@ func New(cfg config.Config, st *store.Store) *Server {
 		analyzer: service.NewAnalyzer(buildSource(cfg), st),
 		sessions: make(map[string]*session),
 		now:      time.Now,
+		limiter:  newRateLimiter(time.Now),
 	}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
 	mux.HandleFunc("POST /api/session", s.handleLogin)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("DELETE /api/session", s.handleLogout)
 	mux.HandleFunc("GET /api/reef/status", s.requireSession(s.handleReefStatus))
 	mux.HandleFunc("GET /api/reef/parts", s.requireSession(s.handleParts))
-	mux.HandleFunc("POST /api/analyze", s.requireSession(s.handleAnalyze))
+	mux.HandleFunc("POST /api/analyze", s.withAnalyzeRateLimit(s.requireSession(s.handleAnalyze)))
 	mux.HandleFunc("GET /api/opportunities", s.requireSession(s.handleListOpportunities))
 	mux.HandleFunc("GET /api/opportunity", s.requireSession(s.handleGetOpportunity))
+	// 供应链比价（issue #4）
+	mux.HandleFunc("GET /api/suppliers", s.requireSession(s.handleListSuppliers))
+	mux.HandleFunc("POST /api/suppliers", s.requireSession(s.handleCreateSupplier))
+	mux.HandleFunc("DELETE /api/suppliers", s.requireSession(s.handleDeleteSupplier))
+	mux.HandleFunc("GET /api/opportunities/{id}/quotes", s.requireSession(s.handleListQuotes))
+	mux.HandleFunc("POST /api/opportunities/{id}/quotes", s.requireSession(s.handleCreateQuote))
+	mux.HandleFunc("GET /api/opportunities/{id}/quotes/compare", s.requireSession(s.handleCompareQuotes))
+	mux.HandleFunc("POST /api/opportunities/{id}/quotes/{qid}/select", s.requireSession(s.handleSelectQuote))
+	// 成本测算与 D5 回写（issue #5）
+	mux.HandleFunc("GET /api/opportunities/{id}/cost", s.requireSession(s.handleGetCost))
+	mux.HandleFunc("POST /api/opportunities/{id}/cost", s.requireSession(s.handleSaveCost))
+	mux.HandleFunc("DELETE /api/opportunities/{id}/cost", s.requireSession(s.handleDeleteCost))
+	// 报告导出（issue #8）
+	mux.HandleFunc("GET /api/opportunities/{id}/report", s.requireSession(s.handleExportReport))
+	// 采纳写回 RFERP（issue #6：建零件 + 写供应商）
+	mux.HandleFunc("POST /api/opportunities/{id}/adopt/preview", s.requireSession(s.handleAdoptPreview))
+	mux.HandleFunc("POST /api/opportunities/{id}/adopt", s.requireSession(s.handleAdopt))
 	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
 	return s.withLogging(mux)
 }
@@ -82,6 +120,26 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"time":     s.now().UTC().Format(time.RFC3339),
 		"reefBase": s.cfg.ReefBase,
 	})
+}
+
+// handleReady 回答"能不能干活"：探测运行环境是否连上。
+// 与 healthz 分开——进程活着不代表 RFERP 就绪，部署监控需要后者。
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
+	defer cancel()
+	if _, err := s.reef.Probe(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status": "unavailable", "reason": err.Error(),
+		})
+		return
+	}
+	out := map[string]any{"status": "ready"}
+	if s.reefStatus != nil {
+		for k, v := range s.reefStatus() {
+			out[k] = v
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +216,13 @@ func (s *Server) handleReefStatus(w http.ResponseWriter, r *http.Request, sess *
 		"user":      sess.user,
 		"canAdopt":  sess.user.Role == reef.RoleAdmin,
 		"reefBase":  s.cfg.ReefBase,
+	}
+	// 托管模式：先把子进程状态放进去；下面连通性结果会覆盖 connected/message。
+	// 指纹只由注入函数给前 8 位，这里不再拼完整值。
+	if s.reefStatus != nil {
+		for k, v := range s.reefStatus() {
+			out[k] = v
+		}
 	}
 	info, err := s.reef.Probe(ctx)
 	if err != nil {
@@ -268,7 +333,6 @@ func buildSource(cfg config.Config) source.Source {
 	}
 	f, err := source.LoadFixtureDir(cfg.FixtureDir())
 	if err != nil {
-		log.Printf("离线快照加载失败：%v", err)
 		log.Printf("离线快照加载失败：%v，改试真实知乎接口", err)
 		if cfg.ZhihuSecret != "" {
 			return source.NewZhihu(cfg.ZhihuBase(), cfg.ZhihuSecret)

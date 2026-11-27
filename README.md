@@ -54,6 +54,9 @@ go run ./cmd/radar
 | `RADAR_DATA_DIR` | `./data` | SQLite 与缓存目录 |
 | `REEF_BASE` | `http://127.0.0.1:8080` | RFERP 地址 |
 | `REEF_DEVICE_ID` | 空 | RFERP 2.x 局域网版要求的设备指纹；对接 ≤ 4d73ae7 的旧版时留空 |
+| `REEF_MANAGED` | 空 | `1` 时由 radar 托管运行环境子进程并自动发现主机指纹 |
+| `REEF_BIN` | 空 | 托管模式下的运行环境可执行文件路径 |
+| `REEF_PORT` | `8080` | 托管模式期望端口；被占用时依次顺延到 8084 |
 | `ZHIHU_ACCESS_SECRET` | 空 | 知乎 Access Secret，**只从环境变量读** |
 | `RADAR_SOURCE` | `zhihu` | `zhihu` / `fixture`（离线演示） |
 
@@ -62,6 +65,8 @@ go run ./cmd/radar
 ```
 cmd/radar/           入口
 internal/reef/       RFERP 客户端 + 采纳 Saga + 契约测试
+internal/reefhost/   运行环境托管：子进程生命周期 / 指纹发现 / 脱敏
+internal/report/     报告模型 + PDF 渲染（嵌入中文字体子集）
 internal/domain/     五维模型（纯函数，无 IO）
 internal/source/     知乎适配（待建：四接口 / 缓存 / 配额 / fixture）
 internal/store/      SQLite 仓储与版本化迁移
@@ -83,12 +88,15 @@ docs/                ADR 与合规披露
 - [x] 开放式对话与槽位抽取（`internal/dialogue`）：一句话说全即可开跑，缺什么问什么，离题不回答
 - [x] 知乎开放平台四接口客户端（知乎搜索 / 全网搜索 / 热榜 / 直答），无凭证时回落离线快照
 - [x] 离线快照与命令行分析工具 `cmd/analyze`
+- [x] PDF 渲染引擎（纯 Go + 嵌入 Noto Sans SC 子集，缺字替换并计数告警）
+- [x] 供应链数据模型与比价 API（阶梯价 / 整数分排序 / 选定唯一）
+- [x] 成本测算 API 与 D5 回写（含成本门禁：未测算不判「值得验证」）
+- [x] 报告组装与 PDF 导出 API（六节固定 + 问答顾虑触发条件章节）
+- [x] 采纳写回 RFERP（建产品 + 建零件并写供应商 + 建 BOM，Saga 回滚）
 
 进行中：
 
 - [ ] 前端工程与五个界面（对话 / 验证卡 / 比价 / 成本 / 报告）
-- [ ] 供应链比价与成本测算
-- [ ] PDF 调研报告（纯 Go 渲染，中文字体子集）
 - [ ] 客户端壳与安装包
 
 ## 合规
