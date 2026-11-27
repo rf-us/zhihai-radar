@@ -86,7 +86,7 @@ func (z *Zhihu) SearchZhihu(ctx context.Context, keyword string, count int) ([]P
 	if err != nil {
 		return nil, err
 	}
-	return z.parseSearch(raw)
+	return z.parseSearch(raw, "zhihu_search")
 }
 
 func (z *Zhihu) SearchGlobal(ctx context.Context, keyword string, count int) ([]Post, error) {
@@ -97,7 +97,7 @@ func (z *Zhihu) SearchGlobal(ctx context.Context, keyword string, count int) ([]
 	if err != nil {
 		return nil, err
 	}
-	return z.parseSearch(raw)
+	return z.parseSearch(raw, "global_search")
 }
 
 func (z *Zhihu) Hot(ctx context.Context, limit int) ([]Post, error) {
@@ -151,7 +151,7 @@ func (z *Zhihu) Ask(ctx context.Context, prompt string) (string, error) {
 	return out.Choices[0].Message.Content, nil
 }
 
-func (z *Zhihu) parseSearch(raw []byte) ([]Post, error) {
+func (z *Zhihu) parseSearch(raw []byte, source string) ([]Post, error) {
 	var env envelope
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return nil, fmt.Errorf("%w: 搜索响应无法解析", ErrUnavailable)
@@ -166,7 +166,7 @@ func (z *Zhihu) parseSearch(raw []byte) ([]Post, error) {
 	out := make([]Post, 0, len(data.Items))
 	for _, it := range data.Items {
 		p := Post{
-			Title: it.Title, Snippet: it.ContentText, URL: it.URL,
+			Source: source, Title: it.Title, Snippet: it.ContentText, URL: it.URL,
 			Votes: it.VoteUpCount, Comments: it.CommentCount,
 			Authority: parseAuthority(it.AuthorityLevel),
 		}

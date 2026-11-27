@@ -7,6 +7,7 @@ package domain
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -301,20 +302,34 @@ func competitionScore(global []Evidence, prices []float64) float64 {
 	if len(global) == 0 {
 		return 0
 	}
-	return round2(clamp(8*float64(competitorCount(global))+20*math.Min(1, priceSpread(prices)), 0, 100))
+	return round2(clamp(6*float64(competitorCount(global))+20*math.Min(1, priceSpread(prices)), 0, 100))
 }
 
-// competitorCount 按"归一化标题"去重，避免同一篇文章在多个站点重复计数。
+// competitorCount 用"去重域名数"近似竞争密度。
+//
+// 不能用搜索结果条数：条数由请求的 Count 决定（要 20 条就返回 20 条），
+// 拿它当竞品数会让所有品类都顶格 100——实测确实如此，第一版就这么错了。
+// 域名数至少反映"有多少个玩家在卖"，虽然粗糙，但方向是对的。
 func competitorCount(items []Evidence) int {
 	seen := make(map[string]bool, len(items))
 	for _, it := range items {
-		key := strings.Join(strings.Fields(strings.ToLower(it.Title)), "")
-		if key == "" {
+		host := hostOf(it.URL)
+		if host == "" {
 			continue
 		}
-		seen[key] = true
+		seen[host] = true
 	}
 	return len(seen)
+}
+
+// hostOf 取 URL 的主机名并去掉 www.；解析失败返回空。
+func hostOf(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	return strings.TrimPrefix(host, "www.")
 }
 
 func priceSpread(prices []float64) float64 {

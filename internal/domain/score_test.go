@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -127,8 +128,8 @@ func TestEstimateCostLossRateAndTarget(t *testing.T) {
 func TestCompetitionCanVeto(t *testing.T) {
 	now := time.Date(2026, 11, 26, 0, 0, 0, 0, time.UTC)
 	var global []Evidence
-	for i := 0; i < 12; i++ {
-		global = append(global, post(string(rune('A'+i)), 1, 0, 1, 2, now))
+	for i := 0; i < 15; i++ {
+		global = append(global, postHost(fmt.Sprintf("shop%d.com", i), fmt.Sprintf("竞品%d", i), now))
 	}
 	s, _ := Score(Input{
 		Zhihu:  []Evidence{post("a", 900, 90, 4, 1, now)},
@@ -137,7 +138,7 @@ func TestCompetitionCanVeto(t *testing.T) {
 		Now:    now,
 	})
 	if s.Competition < 80 {
-		t.Fatalf("12 个竞品时 D4 应 >= 80，得到 %v", s.Competition)
+		t.Fatalf("15 个不同域名时 D4 应 >= 80，得到 %v", s.Competition)
 	}
 	if got := Verdict(s, false); got != "不建议" {
 		t.Fatalf("竞争过度应一票否决，得到 %q", got)
@@ -157,3 +158,21 @@ func TestPainWithoutEvidenceURLDoesNotCount(t *testing.T) {
 }
 
 func f64(v float64) *float64 { return &v }
+
+// postHost 让竞争度测试能构造不同域名——D4 按去重域名数计算，同域名文章只算一家。
+func postHost(host, title string, now time.Time) Evidence {
+	t := now.AddDate(0, 0, -2)
+	return Evidence{Source: "global_search", Title: title, URL: "https://" + host + "/" + title, PublishedAt: &t}
+}
+
+func TestCompetitionCountsDomainsNotItems(t *testing.T) {
+	now := time.Date(2026, 11, 26, 0, 0, 0, 0, time.UTC)
+	items := []Evidence{
+		postHost("a.com", "1", now), postHost("a.com", "2", now), postHost("a.com", "3", now),
+		postHost("b.com", "4", now),
+		postHost("www.c.com", "5", now),
+	}
+	if got := competitorCount(items); got != 3 {
+		t.Fatalf("应按域名去重（www. 归一化），期望 3，得到 %d", got)
+	}
+}
