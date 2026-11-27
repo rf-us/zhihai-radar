@@ -51,3 +51,6 @@ func env(key, fallback string) string {
 	}
 	return fallback
 }
+
+// FixtureDir 是离线快照目录（RADAR_SOURCE=fixture 时读取）。
+func (c Config) FixtureDir() string { return env("RADAR_FIXTURE_DIR", "./fixtures") }

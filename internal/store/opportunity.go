@@ -14,18 +14,18 @@ import (
 var ErrNotFound = errors.New("store: not found")
 
 type Opportunity struct {
-	ID        int64
-	Keyword   string
-	Name      string
-	OneLine   string
-	Category  string
-	Scores    domain.Scores
-	Verdict   string
-	Reasons   []string
-	PainJSON  string
-	Status    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        int64         `json:"id"`
+	Keyword   string        `json:"keyword"`
+	Name      string        `json:"name"`
+	OneLine   string        `json:"one_line"`
+	Category  string        `json:"category"`
+	Scores    domain.Scores `json:"scores"`
+	Verdict   string        `json:"verdict"`
+	Reasons   []string      `json:"reasons"`
+	PainJSON  string        `json:"pain_points_json"`
+	Status    string        `json:"status"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
 }
 
 type Adoption struct {

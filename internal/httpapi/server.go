@@ -19,6 +19,8 @@ import (
 
 	"github.com/rf-us/zhihai-radar/internal/config"
 	"github.com/rf-us/zhihai-radar/internal/reef"
+	"github.com/rf-us/zhihai-radar/internal/service"
+	"github.com/rf-us/zhihai-radar/internal/source"
 	"github.com/rf-us/zhihai-radar/internal/store"
 	webassets "github.com/rf-us/zhihai-radar/web"
 )
@@ -37,9 +39,10 @@ type session struct {
 }
 
 type Server struct {
-	cfg  config.Config
-	st   *store.Store
-	reef *reef.Client
+	cfg      config.Config
+	st       *store.Store
+	reef     *reef.Client
+	analyzer *service.Analyzer
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -52,6 +55,7 @@ func New(cfg config.Config, st *store.Store) *Server {
 		cfg:      cfg,
 		st:       st,
 		reef:     reef.New(cfg.ReefBase).WithDevice(cfg.ReefDeviceID),
+		analyzer: service.NewAnalyzer(buildSource(cfg), st),
 		sessions: make(map[string]*session),
 		now:      time.Now,
 	}
@@ -65,6 +69,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/session", s.handleLogout)
 	mux.HandleFunc("GET /api/reef/status", s.requireSession(s.handleReefStatus))
 	mux.HandleFunc("GET /api/reef/parts", s.requireSession(s.handleParts))
+	mux.HandleFunc("POST /api/analyze", s.requireSession(s.handleAnalyze))
+	mux.HandleFunc("GET /api/opportunities", s.requireSession(s.handleListOpportunities))
+	mux.HandleFunc("GET /api/opportunity", s.requireSession(s.handleGetOpportunity))
 	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
 	return s.withLogging(mux)
 }
@@ -248,4 +255,24 @@ func writeReefErr(w http.ResponseWriter, err error) {
 	default:
 		writeErr(w, http.StatusInternalServerError, err.Error())
 	}
+}
+
+// buildSource 选择数据源。真实知乎客户端尚未接入（需要 access secret 与官方路径），
+// 当前只支持离线快照；未配置时返回明确的"不可用"，而不是空数据。
+func buildSource(cfg config.Config) source.Source {
+	if cfg.Source != "fixture" {
+		return source.Unavailable{Reason: "未配置知乎数据源（当前仅支持 RADAR_SOURCE=fixture）"}
+	}
+	f, err := source.LoadFixtureDir(cfg.FixtureDir())
+	if err != nil {
+		log.Printf("离线快照加载失败：%v", err)
+		return source.Unavailable{Reason: "离线快照加载失败：" + err.Error()}
+	}
+	return f
+}
+
+// writeServerErr 记录内部错误，只向客户端回通用信息，避免泄露 SQL 与表名。
+func writeServerErr(w http.ResponseWriter, err error) {
+	log.Printf("api: internal error: %v", err)
+	writeErr(w, http.StatusInternalServerError, "internal error")
 }

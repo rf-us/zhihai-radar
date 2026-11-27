@@ -1,0 +1,19 @@
+{
+  "_note": "示例数据，用于离线演示与测试；不是真实抓取的知乎内容。",
+  "keyword": "便携咖啡机",
+  "zhihu": [
+    {"source":"zhihu_search","title":"有哪些买了不后悔的小家电？","snippet":"用了半年，最满意的是便携咖啡机，出差也能喝到现磨的。","url":"https://www.zhihu.com/question/1001/answer/2001","votes":312,"comments":89,"authority":3,"published_at":"2026-09-12T00:00:00Z"},
+    {"source":"zhihu_search","title":"便携咖啡机到底是不是智商税？","snippet":"买了三个月，清洗是真的麻烦，滤网拆下来要刷很久。","url":"https://www.zhihu.com/question/1002/answer/2002","votes":186,"comments":54,"authority":3,"published_at":"2026-10-02T00:00:00Z"},
+    {"source":"zhihu_search","title":"露营装备清单（2026版）","snippet":"咖啡机建议选带压力泵的，手压的那种在高原不太好用。","url":"https://www.zhihu.com/question/1003/answer/2003","votes":97,"comments":21,"authority":2,"published_at":"2026-11-05T00:00:00Z"},
+    {"source":"zhihu_search","title":"办公室咖啡怎么解决？","snippet":"胶囊机太占地方，便携的又容易漏水，纠结。","url":"https://www.zhihu.com/question/1004/answer/2004","votes":64,"comments":18,"authority":2,"published_at":"2026-08-21T00:00:00Z"}
+  ],
+  "global": [
+    {"source":"global_search","title":"Best portable espresso makers 2026","snippet":"We tested 12 portable espresso makers; the top pick costs $129.","url":"https://example.com/reviews/portable-espresso-2026","votes":0,"comments":0,"authority":1,"published_at":"2026-11-10T00:00:00Z"},
+    {"source":"global_search","title":"便携咖啡机横评：8 款主流产品对比","snippet":"价格从 199 到 899 元不等，主要差异在压力和水温稳定性。","url":"https://example.com/reviews/portable-cn","votes":0,"comments":0,"authority":1,"published_at":"2026-10-28T00:00:00Z"},
+    {"source":"global_search","title":"Portable espresso market grows 18% YoY","snippet":"Outdoor and travel segments drive the growth.","url":"https://example.com/news/market","votes":0,"comments":0,"authority":1,"published_at":"2026-07-15T00:00:00Z"}
+  ],
+  "hot": [
+    {"source":"hot","title":"便携咖啡机为什么突然火了","snippet":"露营热 + 办公室场景，带动便携咖啡机销量翻倍。","url":"https://www.zhihu.com/hot/3001","votes":0,"comments":0,"authority":1,"published_at":"2026-11-24T00:00:00Z"}
+  ],
+  "answer": "{\"pain_points\":[{\"text\":\"清洗麻烦，滤网难拆\",\"severity\":5,\"evidence_url\":\"https://www.zhihu.com/question/1002/answer/2002\"},{\"text\":\"密封不好容易漏水\",\"severity\":4,\"evidence_url\":\"https://www.zhihu.com/question/1004/answer/2004\"},{\"text\":\"高原上手压款不好用\",\"severity\":3,\"evidence_url\":\"https://www.zhihu.com/question/1003/answer/2003\"}]}"
+}
