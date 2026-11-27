@@ -183,9 +183,18 @@ func Assemble(in AssembleInput) Document {
 			Lead:    "备件策略与退换率决定长期成本。",
 			Bullets: []string{"梳理易损件清单", "估算退货率对毛利的影响"}},
 	}
+	// 触发原因标签：让读者知道为什么多出这一节（issue #8 验收）。
+	triggerLabel := map[string]string{
+		"compliance": "认证门槛", "logistics": "物流成本", "aftersales": "售后退换",
+	}
 	for _, key := range in.Sections {
 		if sec, ok := cond[key]; ok {
 			sec.Conditional = true
+			reason := triggerLabel[key]
+			if reason == "" {
+				reason = key
+			}
+			sec.Lead = fmt.Sprintf("因你提到「%s」而加开本节。%s", reason, sec.Lead)
 			doc.Sections = append(doc.Sections, sec)
 		}
 	}

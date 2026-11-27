@@ -118,3 +118,30 @@ func TestFullReportFlow(t *testing.T) {
 	}
 	t.Logf("报告已写入 %s（%d 字节，缺字 %s）", out, rec.Body.Len(), rec.Header().Get("X-Missing-Runes"))
 }
+
+func TestExportReportFilenameContainsKeywordAndDate(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "radar.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	_ = st.Migrate(context.Background())
+	s := New(config.Config{Source: "fixture"}, st)
+	const sid = "fname-session"
+	s.sessions[sid] = &session{token: "t", user: reef.User{Role: reef.RoleAdmin}, expires: time.Now().Add(time.Hour)}
+	o := &store.Opportunity{Keyword: "便携咖啡机", Name: "便携咖啡机",
+		Scores: domain.Scores{Demand: 80, Confidence: 0.8}}
+	_ = st.CreateOpportunity(context.Background(), o)
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/opportunities/%d/report", o.ID), nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	cd := rec.Header().Get("Content-Disposition")
+	if !strings.Contains(cd, "filename*=UTF-8''") || !strings.Contains(cd, ".pdf") {
+		t.Fatalf("文件名应含 UTF-8 编码与 .pdf：%s", cd)
+	}
+	if !strings.Contains(cd, time.Now().UTC().Format("2006-01-02")) {
+		t.Fatalf("文件名应含日期：%s", cd)
+	}
+}

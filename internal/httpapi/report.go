@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -78,7 +80,14 @@ func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request, _ *s
 	}
 
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "attachment; filename=report-"+strconv.FormatInt(id, 10)+".pdf")
+	// 文件名含品类与日期（issue #8 验收）。中文名用 RFC 5987 编码，
+	// 同时给一个 ASCII 兜底名，避免不同浏览器对中文 header 的处理差异。
+	asciiName := fmt.Sprintf("report-%d.pdf", id)
+	date := s.now().UTC().Format("2006-01-02")
+	utf8Name := fmt.Sprintf("%s-%s.pdf", opp.Name, date)
+	escaped := url.PathEscape(utf8Name)
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=%s; filename*=UTF-8''%s", asciiName, escaped))
 	w.Header().Set("X-Missing-Runes", strconv.Itoa(res.MissingCount))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(res.PDF)

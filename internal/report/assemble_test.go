@@ -34,6 +34,9 @@ func TestAssembleFixedAndConditionalSections(t *testing.T) {
 	if withCond.Sections[6].Key != "compliance" || withCond.Sections[7].Key != "logistics" {
 		t.Fatalf("条件章节顺序错误：%+v", withCond.Sections[6:])
 	}
+	if !strings.Contains(withCond.Sections[6].Lead, "认证门槛") {
+		t.Fatalf("条件章节应写明触发理由：%s", withCond.Sections[6].Lead)
+	}
 }
 
 func TestAssembleEvidenceIsTraceable(t *testing.T) {

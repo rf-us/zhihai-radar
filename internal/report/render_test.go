@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,5 +157,46 @@ func TestRenderHandlesLongTableAcrossPages(t *testing.T) {
 	}
 	if res.Pages < 2 {
 		t.Fatalf("长表应跨页，实际 %d 页", res.Pages)
+	}
+}
+
+// TestRenderEightPageSample 生成 8 页样例（3 张表 + 1 个跨页长表），
+// 产物写到临时目录供 pdftotext / pdffonts 外部核验。
+func TestRenderEightPageSample(t *testing.T) {
+	doc := sampleDoc()
+	// 表 1：已有一张竞品表（3 行）
+	// 表 2：成本表（4 行）
+	// 表 3：新增一张证据表
+	doc.Sections[2].Table = &Table{
+		Headers: []string{"来源", "标题", "点赞", "评论", "链接"},
+		Rows: [][]string{
+			{"知乎搜索", "买了三个月真实体验", "312", "89", "https://www.zhihu.com/q/1"},
+			{"全网搜索", "AeroPress Go review", "512", "120", "https://example.com/aeropress"},
+		},
+	}
+	// 长表：200 行强制跨多页（第 4 张表，跨页续排）
+	rows := make([][]string, 0, 240)
+	for i := 0; i < 240; i++ {
+		rows = append(rows, []string{
+			fmt.Sprintf("零件%02d薄膜滤网组件", i), "1", "12.50", "5%", "13.13",
+		})
+	}
+	doc.Sections = append(doc.Sections, Section{
+		Key: "appendix", Heading: "附录、完整用料明细",
+		Lead:  "下表为完整用料明细，跨页续排。",
+		Table: &Table{Headers: []string{"零件", "数量", "单价", "损耗率", "小计"}, Rows: rows},
+	})
+
+	res, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(os.TempDir(), "radar-8page-sample.pdf")
+	if err := os.WriteFile(out, res.PDF, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("8 页样例：%s（%d 页，%d 字节）", out, res.Pages, len(res.PDF))
+	if res.Pages < 8 {
+		t.Fatalf("样例应至少 8 页，实际 %d 页", res.Pages)
 	}
 }
