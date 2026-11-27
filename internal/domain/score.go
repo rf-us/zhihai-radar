@@ -31,12 +31,12 @@ type Pain struct {
 }
 
 type CostLine struct {
-	PartID    int64
-	PartName  string
-	Qty       float64
-	UnitPrice float64
-	LossRate  float64
-	UseMode   int // 0 每台用 N 个 / 1 每 M 台用 1 个（Qty 即 M）
+	PartID    int64   `json:"part_id,omitempty"`
+	PartName  string  `json:"part_name"`
+	Qty       float64 `json:"qty"`
+	UnitPrice float64 `json:"unit_price"`
+	LossRate  float64 `json:"loss_rate"`
+	UseMode   int     `json:"use_mode"` // 0 每台用 N 个 / 1 每 M 台用 1 个（Qty 即 M）
 }
 
 type Input struct {
@@ -63,6 +63,14 @@ type Scores struct {
 
 // 权重之和为 1。维度缺失时按可用权重归一化，见 Score。
 var weights = [...]float64{0.35, 0.20, 0.15, 0.10, 0.20}
+
+const (
+	// MarginFullScore 是 D5 拿满分的毛利率门槛（40%）。
+	// 改这个值必须同步 docs/scoring.md 与单测。
+	MarginFullScore = 0.40
+	// CostReverseMargin 是"成本反推建议售价"时保证的毛利率（60% 成本占比）。
+	CostReverseMargin = 0.60
+)
 
 type CostBreakdown struct {
 	TotalCost   float64  `json:"total_cost"`
@@ -201,17 +209,17 @@ func EstimateCost(lines []CostLine, target *float64, prices []float64) (CostBrea
 		out.Suggested = average(prices) * 0.8
 		out.PriceSource = "竞品均价×0.8"
 	default:
-		out.Suggested = total / 0.6
+		out.Suggested = total / CostReverseMargin
 		out.PriceSource = "成本反推（保证 40% 毛利）"
 	}
 	if out.Suggested <= 0 {
 		return CostBreakdown{}, false
 	}
 	out.Margin = (out.Suggested - out.TotalCost) / out.Suggested
-	if out.Margin >= 0.40 {
+	if out.Margin >= MarginFullScore {
 		out.Score = 100
 	} else {
-		out.Score = clamp(out.Margin/0.40*100, 0, 100)
+		out.Score = clamp(out.Margin/MarginFullScore*100, 0, 100)
 	}
 	out.Score = round2(out.Score)
 	return out, true

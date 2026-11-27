@@ -1,0 +1,65 @@
+/*
+ * 设计令牌(浅色主题)。这里是唯一来源:页面只用 var(--token),不写死颜色/字号/间距。
+ * 令牌的用途与五维颜色语义见仓库根目录 DESIGN.md。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 中性色:暖白底 + 白卡片 + 细边框 */
+  --c-bg: #f7f7f5;
+  --c-surface: #ffffff;
+  --c-surface-muted: #f1f1ec;
+  --c-border: #e6e6e1;
+  --c-border-strong: #d6d6d0;
+  --c-text: #1f1f1d;
+  --c-text-muted: #6b6b66;
+  --c-text-subtle: #8a8a83;
+
+  /* 语义色 */
+  --c-accent: #1f1f1d;
+  --c-accent-contrast: #ffffff;
+  --c-focus: #cfe0f5;
+  --c-ok: #1d7a52;
+  --c-ok-soft: #e7f4ee;
+  --c-warn: #8a5a00;
+  --c-warn-soft: #fdf3e0;
+  --c-danger: #a33333;
+  --c-danger-soft: #fbeaea;
+
+  /* 五维固定配色:全站一致,只用于标签/图表/雷达 */
+  --dim-demand: #c2410c;  /* 需求热度 */
+  --dim-pain: #b91c1c;    /* 痛点强度 */
+  --dim-trend: #0f766e;   /* 趋势信号 */
+  --dim-compete: #1d4ed8; /* 竞争供给 */
+  --dim-cost: #6d28d9;    /* 成本可行性 */
+
+  /* 字号 */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+
+  /* 间距(4 的倍数) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(31, 31, 29, 0.05);
+
+  /* 布局 */
+  --page-max: 1040px;
+  --topbar-h: 56px;
+}

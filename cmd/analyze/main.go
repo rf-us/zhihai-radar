@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rf-us/zhihai-radar/internal/service"
@@ -28,16 +29,41 @@ func main() {
 	keyword := flag.String("keyword", "", "品类关键词")
 	category := flag.String("category", "", "品类（可选）")
 	price := flag.Float64("price", 0, "目标零售价（人民币，可选）")
-	fixture := flag.String("fixture", "", "离线快照目录；设置后不调用真实接口")
+	fixture := flag.String("fixture", "", "快照目录或品类名；设置后不调用真实接口")
+	list := flag.Bool("list", false, "列出可用离线快照品类后退出")
 	flag.Parse()
 
-	if *keyword == "" {
-		log.Fatal("缺少 -keyword")
+	fixtureDir := "./fixtures"
+	if v := os.Getenv("RADAR_FIXTURE_DIR"); strings.TrimSpace(v) != "" {
+		fixtureDir = v
+	}
+	if *list {
+		f, err := source.LoadFixtureDir(fixtureDir)
+		if err != nil {
+			log.Fatalf("加载快照: %v", err)
+		}
+		fmt.Println("可用离线快照：")
+		for _, k := range f.Keywords() {
+			fmt.Println(" -", k)
+		}
+		return
+	}
+
+	if *keyword == "" && *fixture == "" {
+		log.Fatal("缺少 -keyword（或用 -list 查看可用快照）")
 	}
 
 	var src source.Source
 	if *fixture != "" {
-		f, err := source.LoadFixtureDir(*fixture)
+		// -fixture 既可以是目录，也可以是品类名（用默认目录加载后取该品类）。
+		dir := *fixture
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			dir = fixtureDir
+			if *keyword == "" {
+				keyword = fixture
+			}
+		}
+		f, err := source.LoadFixtureDir(dir)
 		if err != nil {
 			log.Fatalf("加载快照: %v", err)
 		}

@@ -6,16 +6,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
 // Dataset 是一次完整分析的离线快照：四路数据各一份。
 type Dataset struct {
+	Note    string `json:"_note"`
 	Keyword string `json:"keyword"`
 	Zhihu   []Post `json:"zhihu"`
 	Global  []Post `json:"global"`
 	Hot     []Post `json:"hot"`
 	Answer  string `json:"answer"`
+	// CollectedAt 是快照采集日期（ISO 日期或时间），报告里展示数据时效。
+	CollectedAt string `json:"collected_at"`
 }
 
 // Fixture 回放离线快照。
@@ -52,6 +56,22 @@ func LoadFixtureDir(dir string) (*Fixture, error) {
 		var d Dataset
 		if err := json.Unmarshal(raw, &d); err != nil {
 			return nil, fmt.Errorf("fixture %s: %w", e.Name(), err)
+		}
+		// 缺字段时必须指出文件名与具体字段，不能只说 invalid json（issue #3 验收）。
+		if strings.TrimSpace(d.Keyword) == "" {
+			return nil, fmt.Errorf("fixture %s: 缺少必填字段 keyword", e.Name())
+		}
+		if d.Zhihu == nil {
+			return nil, fmt.Errorf("fixture %s: 缺少必填字段 zhihu（品类 %s）", e.Name(), d.Keyword)
+		}
+		if d.Global == nil {
+			return nil, fmt.Errorf("fixture %s: 缺少必填字段 global（品类 %s）", e.Name(), d.Keyword)
+		}
+		if d.Hot == nil {
+			return nil, fmt.Errorf("fixture %s: 缺少必填字段 hot（品类 %s）", e.Name(), d.Keyword)
+		}
+		if strings.TrimSpace(d.Answer) == "" {
+			return nil, fmt.Errorf("fixture %s: 缺少必填字段 answer（品类 %s）", e.Name(), d.Keyword)
 		}
 		all = append(all, d)
 	}
@@ -138,4 +158,19 @@ func limit(posts []Post, n int) []Post {
 
 func normalize(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// Keywords 返回快照里所有可用的品类关键词（稳定排序），供命令行 -list 展示。
+func (f *Fixture) Keywords() []string {
+	out := make([]string, 0, len(f.data))
+	for k := range f.data {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DatasetOf 返回某关键词对应的快照（含采集日期与来源说明），供展示与诊断。
+func (f *Fixture) DatasetOf(keyword string) (Dataset, error) {
+	return f.get(keyword)
 }

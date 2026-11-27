@@ -1,0 +1,9 @@
+Noto Sans SC（内嵌子集）
+Copyright 2014-2024 Adobe (http://www.adobe.com/), with Reserved Font Name 'Noto'.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+A copy of the license is available at https://openfontlicense.org/
+
+子集说明：本字体由 scripts/make_font_subset.py 从 NotoSansSC-VF.ttf 实例化
+（wght=400）并子集化生成，仅保留 GB2312 一级汉字 + 报告语料所需字符。
+派生字体同样遵循 OFL 1.1，随安装包分发。

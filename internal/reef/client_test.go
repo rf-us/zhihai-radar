@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -25,10 +26,12 @@ type fakeReef struct {
 
 	failBOM    bool
 	slowCreate time.Duration
+	parts      map[int64]Part
+	partKept   bool // 删除零件时返回 409（模拟被引用）
 }
 
 func newFakeReef() *fakeReef {
-	return &fakeReef{boms: map[int64][]BOMItem{}, nextID: 1}
+	return &fakeReef{boms: map[int64][]BOMItem{}, parts: map[int64]Part{}, nextID: 1}
 }
 
 func (f *fakeReef) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +63,34 @@ func (f *fakeReef) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(list)
+
+	case r.URL.Path == "/api/parts" && r.Method == http.MethodPost:
+		var in CreatePartInput
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeFakeErr(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		f.mu.Lock()
+		id := f.nextID
+		f.nextID++
+		p := Part{ID: id, Code: in.Code, Name: in.Name, Unit: in.Unit, Supplier: in.Supplier}
+		f.parts[id] = p
+		f.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(p)
+
+	case r.URL.Path == "/api/parts" && r.Method == http.MethodDelete:
+		id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		f.mu.Lock()
+		_, exists := f.parts[id]
+		if exists && !f.partKept {
+			delete(f.parts, id)
+		}
+		f.mu.Unlock()
+		if exists && f.partKept {
+			writeFakeErr(w, http.StatusConflict, "零件已被引用")
+			return
+		}
+		fmt.Fprint(w, `{"status":"ok"}`)
 
 	case r.URL.Path == "/api/products" && r.Method == http.MethodPost:
 		// 与 RFERP 的 decodeProductWrite 一致：未知字段直接 400。
@@ -360,5 +391,52 @@ func TestDeviceHeaderIsSentOnEveryRequest(t *testing.T) {
 		if v != "dev-abc" {
 			t.Fatalf("第 %d 个请求没带设备标识（RFERP 2.1.1 会返回 401）: %q", i+1, v)
 		}
+	}
+}
+
+func TestAdoptRollbackReclaimsParts(t *testing.T) {
+	f := newFakeReef()
+	f.failBOM = true
+	c := startFake(t, f)
+
+	res, err := c.Adopt(context.Background(), "t0", AdoptInput{
+		OpportunityID: 11, Name: "回收测试",
+		Parts: []PartSpec{{Name: "临时零件", Code: "P-1", Unit: "个"}},
+		Lines: []BOMLine{{PartRef: "临时零件", Qty: 1}},
+	})
+	if err == nil || res.Status != StatusRolledBack {
+		t.Fatalf("应回滚：%+v err=%v", res, err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.products) != 0 {
+		t.Fatalf("产品应被删：%d", len(f.products))
+	}
+	if len(f.parts) != 0 {
+		t.Fatalf("本次新建零件应被回收：%d", len(f.parts))
+	}
+}
+
+func TestAdoptRollbackKeepsReferencedPart(t *testing.T) {
+	f := newFakeReef()
+	f.failBOM = true
+	f.partKept = true
+	c := startFake(t, f)
+
+	res, err := c.Adopt(context.Background(), "t0", AdoptInput{
+		OpportunityID: 12, Name: "保留测试",
+		Parts: []PartSpec{{Name: "被引用零件", Code: "P-2", Unit: "个"}},
+		Lines: []BOMLine{{PartRef: "被引用零件", Qty: 1}},
+	})
+	if err == nil || res.Status != StatusRolledBack {
+		t.Fatalf("应回滚：%+v err=%v", res, err)
+	}
+	if !strings.Contains(res.Message, "零件已保留") {
+		t.Fatalf("应说明零件已保留：%s", res.Message)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.parts) != 1 {
+		t.Fatalf("被引用的零件应保留：%d", len(f.parts))
 	}
 }
