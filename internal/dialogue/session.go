@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Session 是一次开放式对话的状态。
@@ -16,7 +17,6 @@ import (
 // 这是产品要求，也是安全边界——它不是一个通用聊天机器人。
 type Session struct {
 	slots Slots
-	turns int
 }
 
 type Slots struct {
@@ -77,7 +77,7 @@ var supplyHints = []struct {
 }{
 	{[]string{"自有工厂", "自己的厂", "自己厂", "工厂是我"}, "own"},
 	{[]string{"代工", "合作工厂", "长期合作"}, "oem"},
-	{[]string{"没有供应商", "没供应商", "还没找", "无固定", "固定供应商"}, "none"},
+	{[]string{"没有供应商", "没供应商", "还没找", "无固定", "没有固定供应商", "没固定供应商"}, "none"},
 }
 
 var concernHints = []struct {
@@ -90,10 +90,11 @@ var concernHints = []struct {
 	{[]string{"售后", "退货", "维修"}, "aftersales"},
 }
 
-var priceRe = regexp.MustCompile(`(?i)(?:\$|usd|美元)?\s*(\d+(?:\.\d+)?)\s*(?:-|~|到|至)?\s*(\d+(?:\.\d+)?)?\s*(?:美元|美金|usd|\$)?`)
+var priceRe = regexp.MustCompile(`(?i)(?:\$|usd|美元)?\s*(\d+(?:\.\d+)?)\s*(?:-|~|–|到|至)?\s*(\d+(?:\.\d+)?)?\s*(?:美元|美金|usd|\$)?`)
+var priceOnlyRe = regexp.MustCompile(`^(?:大概\s*)?\d+(?:\.\d+)?(?:\s*(?:-|~|–|到|至)\s*\d+(?:\.\d+)?)?\s*(?:左右)?$`)
+var explicitDirection = regexp.MustCompile(`品类(?:方向)?\s*(?:是|[:：=])\s*([^，,。；;\r\n]+)`)
 
 func (s *Session) Turn(input string) Reply {
-	s.turns++
 	text := strings.TrimSpace(input)
 	if text == "" {
 		return Reply{Kind: KindQuestion, Text: "说说你这次想看的品类？"}
@@ -113,6 +114,10 @@ func (s *Session) Turn(input string) Reply {
 		}
 	}
 
+	return s.Reply()
+}
+
+func (s *Session) Reply() Reply {
 	if missing := s.missing(); len(missing) > 0 {
 		return Reply{
 			Kind:    KindQuestion,
@@ -121,31 +126,85 @@ func (s *Session) Turn(input string) Reply {
 		}
 	}
 
-	plan, err := Derive(s.answers())
+	plan, err := Derive(s.Answers())
 	if err != nil {
 		return Reply{Kind: KindQuestion, Text: "还差一点信息：" + err.Error()}
 	}
+	plan.Category = s.slots.Category
 	return Reply{
 		Kind: KindReady,
-		Text: fmt.Sprintf("信息齐了：%s，目标市场 %s，价格带 %s。我按这个跑一遍分析。",
+		Text: fmt.Sprintf("信息齐了：%s，目标市场 %s，价格带 %s。可以开始分析。",
 			plan.Keyword, marketLabel(plan.Market), priceLabel(s.slots.PriceBand)),
 		Plan: &plan,
 	}
 }
 
-func (s *Session) hasAny() bool {
-	return s.slots.Keyword != "" || s.slots.Market != "" ||
-		s.slots.PriceBand != "" || s.slots.SupplyBase != "" || len(s.slots.Concerns) > 0
+func (s *Session) Update(key, value string) error {
+	value = strings.TrimSpace(value)
+	for _, question := range Questions() {
+		if question.Key != key {
+			continue
+		}
+		if question.FreeText {
+			if utf8.RuneCountInString(value) > 40 {
+				return fmt.Errorf("品类词最多 40 个字符")
+			}
+			s.slots.Keyword, s.slots.Category = value, ""
+			for _, option := range question.Options {
+				if value == option.Value || value == option.Keyword {
+					s.slots.Keyword, s.slots.Category = option.Keyword, option.Category
+					break
+				}
+			}
+			return nil
+		}
+
+		var values []string
+		if value != "" {
+			for _, item := range strings.Split(value, ",") {
+				valid := false
+				for _, option := range question.Options {
+					if item == option.Value {
+						valid = true
+						break
+					}
+				}
+				if !valid || contains(values, item) || (!question.Multiple && len(values) > 0) {
+					return fmt.Errorf("%s的选项无效", question.Title)
+				}
+				values = append(values, item)
+			}
+		}
+		switch key {
+		case "market":
+			s.slots.Market = value
+		case "price":
+			s.slots.PriceBand = value
+		case "supply":
+			s.slots.SupplyBase = value
+		case "concerns":
+			s.slots.Concerns = values
+		case "depth":
+			s.slots.Depth = value
+		}
+		return nil
+	}
+	return fmt.Errorf("未知槽位")
 }
 
 func (s *Session) extract(text string) {
 	lower := strings.ToLower(text)
 
 	if s.slots.Keyword == "" {
-		for _, h := range categoryHints {
-			if containsAny(lower, h.words) {
-				s.slots.Keyword, s.slots.Category = h.keyword, h.category
-				break
+		if match := explicitDirection.FindStringSubmatch(text); len(match) != 0 {
+			_ = s.Update("direction", match[1])
+		}
+		if s.slots.Keyword == "" {
+			for _, h := range categoryHints {
+				if containsAny(lower, h.words) {
+					s.slots.Keyword, s.slots.Category = h.keyword, h.category
+					break
+				}
 			}
 		}
 	}
@@ -165,7 +224,8 @@ func (s *Session) extract(text string) {
 			}
 		}
 	}
-	if s.slots.PriceBand == "" {
+	if s.slots.PriceBand == "" && (looksOnTopic(lower) || priceOnlyRe.MatchString(lower) ||
+		containsAny(lower, []string{"$", "美元", "美金", "usd"})) {
 		if band := detectPrice(lower); band != "" {
 			s.slots.PriceBand = band
 		}
@@ -175,8 +235,13 @@ func (s *Session) extract(text string) {
 			s.slots.Concerns = append(s.slots.Concerns, h.value)
 		}
 	}
-	if s.slots.Depth == "" && containsAny(lower, []string{"完整", "详细", "证据链", "报告"}) {
-		s.slots.Depth = "full"
+	if s.slots.Depth == "" {
+		switch {
+		case containsAny(lower, []string{"先看结论", "快速看"}):
+			s.slots.Depth = "quick"
+		case containsAny(lower, []string{"完整", "详细", "证据链", "报告"}):
+			s.slots.Depth = "full"
+		}
 	}
 }
 
@@ -221,7 +286,7 @@ func (s *Session) ack() string {
 	return ""
 }
 
-func (s *Session) answers() Answers {
+func (s *Session) Answers() Answers {
 	a := Answers{"direction": s.slots.Keyword, "market": s.slots.Market,
 		"price": s.slots.PriceBand, "supply": s.slots.SupplyBase}
 	if len(s.slots.Concerns) > 0 {

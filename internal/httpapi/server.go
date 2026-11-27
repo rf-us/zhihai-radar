@@ -36,6 +36,10 @@ type session struct {
 	token   string
 	user    reef.User
 	expires time.Time
+
+	dialogueMu sync.Mutex
+	dialogue   *dialogueSession
+	closed     bool
 }
 
 type Server struct {
@@ -112,6 +116,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/reef/status", s.requireSession(s.handleReefStatus))
 	mux.HandleFunc("GET /api/reef/parts", s.requireSession(s.handleParts))
 	mux.HandleFunc("POST /api/analyze", s.withAnalyzeRateLimit(s.requireSession(s.handleAnalyze)))
+	mux.HandleFunc("POST /api/dialogue/sessions", s.requireSession(s.openDialogue))
+	mux.HandleFunc("GET /api/dialogue/sessions/{id}", s.requireSession(s.withDialogue(s.readDialogue)))
+	mux.HandleFunc("POST /api/dialogue/sessions/{id}/turns", s.requireSession(s.withDialogue(s.turnDialogue)))
+	mux.HandleFunc("PUT /api/dialogue/sessions/{id}/slots/{slot}", s.requireSession(s.withDialogue(s.editDialogue)))
+	mux.HandleFunc("POST /api/dialogue/sessions/{id}/analyze", s.requireSession(s.withDialogue(s.startDialogueAnalysis)))
+	mux.HandleFunc("POST /api/dialogue/sessions/{id}/cancel", s.requireSession(s.withDialogue(s.cancelDialogueAnalysis)))
+	mux.HandleFunc("POST /api/dialogue/sessions/{id}/next", s.requireSession(s.nextDialogue))
 	mux.HandleFunc("GET /api/opportunities", s.requireSession(s.handleListOpportunities))
 	mux.HandleFunc("GET /api/opportunity", s.requireSession(s.handleGetOpportunity))
 	// 供应链比价（issue #4）
@@ -224,8 +235,12 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(cookieName); err == nil {
 		s.mu.Lock()
+		sess := s.sessions[c.Value]
 		delete(s.sessions, c.Value)
 		s.mu.Unlock()
+		if sess != nil {
+			sess.closeDialogue()
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
 	w.WriteHeader(http.StatusNoContent)
@@ -300,6 +315,7 @@ func (s *Server) session(r *http.Request) (*session, bool) {
 	}
 	if s.now().After(sess.expires) {
 		delete(s.sessions, c.Value)
+		sess.closeDialogue()
 		return nil, false
 	}
 	return sess, true

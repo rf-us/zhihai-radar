@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import { Link } from '../router'
-import type { CostExtras, CostLine, Quote } from '../types'
+import type { CostExtras, CostLine, CostRecord, OpportunityDetail, Quote } from '../types'
 
 // #12 成本测算：use_mode=1 表示"每 Qty 台用 1 个"，单台成本 = 单价 / Qty。
 // 草稿存 localStorage，刷新不丢；保存成功后显示综合分变化。
@@ -14,14 +14,14 @@ type Props = { id: string }
 type Draft = {
   bom: CostLine[]
   extras: CostExtras
-  targetPrice: string
+  targetPrice: string | null
 }
 
 function emptyDraft(): Draft {
   return {
     bom: [{ part_name: '', qty: 1, unit_price: 0, loss_rate: 0, use_mode: 0 }],
     extras: { packaging: 0, freight: 0, commission_rate: 0 },
-    targetPrice: '',
+    targetPrice: null,
   }
 }
 
@@ -54,7 +54,9 @@ export default function CostPage({ id }: Props) {
     } catch { /* 草稿损坏则用空表 */ }
     return emptyDraft()
   })
-  const [saved, setSaved] = useState<{ before: number; after: number } | null>(null)
+  const [saved, setSaved] = useState<{ before?: number; after?: number } | null>(null)
+  const [plannedPrice, setPlannedPrice] = useState('')
+  const [loadingPrice, setLoadingPrice] = useState(true)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -66,12 +68,20 @@ export default function CostPage({ id }: Props) {
 
   useEffect(() => {
     if (!Number.isFinite(opportunityId) || opportunityId <= 0) return
+    void api.get<OpportunityDetail>(`/api/opportunity?id=${opportunityId}`)
+      .then(({ opportunity }) => {
+        const target = opportunity.analysis?.plan?.target_cny
+        if (target && target > 0) setPlannedPrice(String(target))
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoadingPrice(false))
     void api.get<Quote[]>(`/api/opportunities/${opportunityId}/quotes`)
       .then((q) => setQuotes(q ?? []))
       .catch(() => setQuotes([]))
   }, [opportunityId])
 
-  const result = useMemo(() => computeLocal(draft), [draft])
+  const targetPrice = draft.targetPrice ?? plannedPrice
+  const result = useMemo(() => computeLocal({ ...draft, targetPrice }), [draft, targetPrice])
 
   const updateLine = (index: number, patch: Partial<CostLine>) => {
     setDraft((d) => ({ ...d, bom: d.bom.map((l, i) => i === index ? { ...l, ...patch } : l) }))
@@ -95,10 +105,15 @@ export default function CostPage({ id }: Props) {
     setDraft((d) => {
       const bom = d.bom.map((l) =>
         l.part_name.trim() === selected.part_name ? { ...l, unit_price: selected.unit_price } : l)
-      // 同名零件更新单价，不存在才新增一行（验收标准）。
       const found = d.bom.some((l) => l.part_name.trim() === selected.part_name)
       if (!found) {
-        bom.push({ part_name: selected.part_name, qty: 1, unit_price: selected.unit_price, loss_rate: 0, use_mode: 0 })
+        const line = { part_name: selected.part_name, qty: 1, unit_price: selected.unit_price, loss_rate: 0, use_mode: 0 }
+        const first = bom[0]
+        if (bom.length === 1 && !first.part_name && !first.unit_price && first.qty === 1 && !first.loss_rate && !first.use_mode) {
+          bom[0] = line
+        } else {
+          bom.push(line)
+        }
       }
       return { ...d, bom }
     })
@@ -127,19 +142,15 @@ export default function CostPage({ id }: Props) {
 
     setBusy(true)
     try {
-      // 保存前读一次当前综合分，保存后显示真实变化（不是让用户手填）。
-      let before = 0
-      try {
-        const opp = await api.get<{ opportunity: { scores: { overall: number } } }>(
-          `/api/opportunity?id=${opportunityId}`)
-        before = opp?.opportunity?.scores?.overall ?? 0
-      } catch { /* 读不到就只显示新分数 */ }
-      const created = await api.post<{ cost: { score: number } }>(`/api/opportunities/${opportunityId}/cost`, {
+      const detailUrl = `/api/opportunity?id=${opportunityId}`
+      const before = await api.get<OpportunityDetail>(detailUrl).catch(() => undefined)
+      await api.post(`/api/opportunities/${opportunityId}/cost`, {
         bom: draft.bom,
         extras: draft.extras,
-        target_price: draft.targetPrice ? Number(draft.targetPrice) : undefined,
+        target_price: targetPrice ? Number(targetPrice) : undefined,
       })
-      setSaved({ before, after: created.cost.score })
+      const after = await api.get<OpportunityDetail>(detailUrl).catch(() => undefined)
+      setSaved({ before: before?.opportunity.scores.overall, after: after?.opportunity.scores.overall })
       try { localStorage.removeItem(draftKey) } catch { /* 忽略 */ }
     } catch (err) {
       // 保存失败不清草稿：用户已填内容保留（验收标准）。
@@ -151,9 +162,9 @@ export default function CostPage({ id }: Props) {
 
   const loadSaved = useCallback(async () => {
     try {
-      const rec = await api.get<{ bom: CostLine[]; extras: CostExtras; breakdown: { suggested_price: number } } | null>(
+      const rec = await api.get<CostRecord | { cost: null }>(
         `/api/opportunities/${opportunityId}/cost`)
-      if (rec?.bom?.length) {
+      if ('bom' in rec && rec.bom.length) {
         setDraft({
           bom: rec.bom,
           extras: rec.extras ?? { packaging: 0, freight: 0, commission_rate: 0 },
@@ -168,13 +179,14 @@ export default function CostPage({ id }: Props) {
       <header className="page-head">
         <p className="page-head__eyebrow">候选 · 成本</p>
         <h1 className="page-head__title">成本与定价</h1>
-        <p className="page-head__lede">填完 BOM 才能把结论从「需进一步验证」升级。未保存内容自动留在本机。</p>
+        <p className="page-head__lede">补齐 BOM 后重算成本可行性与综合分。未保存内容自动留在本机。</p>
       </header>
 
       {error ? <div className="notice notice--danger" role="alert">{error}</div> : null}
       {saved ? (
         <div className="notice notice--ok" role="status">
-          综合分已更新：{saved.before} → {saved.after}。
+          {saved.after === undefined ? '成本已保存。返回验证卡查看综合分。'
+            : `综合分已更新：${saved.before === undefined ? '' : `${saved.before} → `}${saved.after}。`}
           <Link to={`/opportunity/${encodeURIComponent(id)}`}>返回验证卡 →</Link>
         </div>
       ) : null}
@@ -237,7 +249,7 @@ export default function CostPage({ id }: Props) {
           {fieldErrors.commission ? <span className="field__err">{fieldErrors.commission}</span> : null}
         </label>
         <label className="field">目标售价（元，可留空自动建议）
-          <input className="input" type="number" min={0} step="0.01" value={draft.targetPrice}
+          <input className="input" type="number" min={0} step="0.01" value={targetPrice}
             onChange={(e) => setDraft((d) => ({ ...d, targetPrice: e.target.value }))} />
         </label>
       </div>
@@ -252,10 +264,11 @@ export default function CostPage({ id }: Props) {
       </div>
 
       <div className="row">
-        <button className="btn" type="button" onClick={() => void save()} disabled={busy}>
+        <button className="btn" type="button" onClick={() => void save()} disabled={busy || loadingPrice}>
           {busy ? '保存中…' : '保存并重算综合分'}
         </button>
         <Link to={`/opportunity/${encodeURIComponent(id)}/supply`}>← 去供应链比价</Link>
+        <Link to={`/opportunity/${encodeURIComponent(id)}`}>返回验证卡</Link>
       </div>
     </section>
   )

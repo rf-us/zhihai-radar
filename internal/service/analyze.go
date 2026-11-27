@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/rf-us/zhihai-radar/internal/dialogue"
 	"github.com/rf-us/zhihai-radar/internal/domain"
 	"github.com/rf-us/zhihai-radar/internal/source"
 	"github.com/rf-us/zhihai-radar/internal/store"
@@ -31,6 +32,7 @@ type AnalyzeInput struct {
 	Category    string
 	TargetPrice *float64
 	Operator    string
+	Plan        *dialogue.Plan
 }
 
 type Detail struct {
@@ -47,36 +49,111 @@ const (
 )
 
 func (a *Analyzer) Analyze(ctx context.Context, in AnalyzeInput) (*Detail, error) {
+	detail, err := a.Prepare(ctx, in, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.Save(ctx, detail); err != nil {
+		return nil, err
+	}
+	return detail, nil
+}
+
+const (
+	ZhihuSearch  = "zhihu_search"
+	GlobalSearch = "global_search"
+	Hot          = "hot"
+	Answer       = "answer"
+)
+
+func (a *Analyzer) SourceMode() string {
+	switch a.src.(type) {
+	case *source.Fixture:
+		return "fixture"
+	case source.Unavailable:
+		return "unavailable"
+	default:
+		return "zhihu"
+	}
+}
+
+func (a *Analyzer) Prepare(ctx context.Context, in AnalyzeInput, progress func(string, store.SourceProgress)) (*Detail, error) {
 	keyword := strings.TrimSpace(in.Keyword)
 	if n := utf8.RuneCountInString(keyword); n == 0 || n > 40 {
 		return nil, errors.New("品类词长度需在 1–40 个字符之间")
 	}
 
 	var (
-		zhihu, global, hot          []source.Post
-		errZhihu, errGlobal, errHot error
+		zhihu, global, hot []source.Post
+		answer             string
 	)
+	analysis := &store.AnalysisContext{
+		Plan: in.Plan, Mode: a.SourceMode(), Sources: make(map[string]store.SourceProgress, 4),
+	}
+	var progressMu sync.Mutex
+	publish := func(name string, update store.SourceProgress) {
+		progressMu.Lock()
+		analysis.Sources[name] = update
+		progressMu.Unlock()
+		if progress != nil {
+			progress(name, update)
+		}
+	}
+	start := func(name string) { publish(name, store.SourceProgress{Status: "running"}) }
+	finish := func(name string, err error) {
+		update := store.SourceProgress{Status: "succeeded"}
+		if err != nil {
+			update = store.SourceProgress{Status: "failed", Reason: a.sourceError(err)}
+		}
+		publish(name, update)
+	}
+	search := func(name string, fn func(context.Context) ([]source.Post, error)) []source.Post {
+		start(name)
+		posts, err := a.call(ctx, fn)
+		finish(name, err)
+		return posts
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		zhihu, errZhihu = a.call(ctx, func(c context.Context) ([]source.Post, error) {
+		zhihu = search(ZhihuSearch, func(c context.Context) ([]source.Post, error) {
 			return a.src.SearchZhihu(c, keyword, 10)
 		})
+		if ctx.Err() != nil {
+			return
+		}
+		start(Answer)
+		var err error
+		if fixture, ok := a.src.(*source.Fixture); ok {
+			var dataset source.Dataset
+			dataset, err = fixture.DatasetOf(keyword)
+			answer = dataset.Answer
+		} else {
+			answer, err = a.callText(ctx, buildPrompt(keyword, zhihu))
+		}
+		if err == nil && answerPoints(answer) == nil {
+			err = errAnswerFormat
+		}
+		finish(Answer, err)
 	}()
 	go func() {
 		defer wg.Done()
-		global, errGlobal = a.call(ctx, func(c context.Context) ([]source.Post, error) {
+		global = search(GlobalSearch, func(c context.Context) ([]source.Post, error) {
 			return a.src.SearchGlobal(c, keyword, 20)
 		})
 	}()
 	go func() {
 		defer wg.Done()
-		hot, errHot = a.call(ctx, func(c context.Context) ([]source.Post, error) {
+		hot = search(Hot, func(c context.Context) ([]source.Post, error) {
 			return a.src.Hot(c, 30)
 		})
 	}()
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	hotHit := false
 	for _, p := range hot {
@@ -86,17 +163,6 @@ func (a *Analyzer) Analyze(ctx context.Context, in AnalyzeInput) (*Detail, error
 		}
 	}
 
-	// 痛点由直答生成；fixture 模式直接取快照里的答案。
-	answer := ""
-	if f, ok := a.src.(*source.Fixture); ok {
-		answer = f.AnswerFor(keyword)
-	} else {
-		var err error
-		answer, err = a.callText(ctx, buildPrompt(keyword, zhihu))
-		if err != nil {
-			errZhihu = errors.Join(errZhihu, fmt.Errorf("直答: %w", err))
-		}
-	}
 	pains := parsePains(answer, urlSet(zhihu, global))
 
 	input := domain.Input{
@@ -120,22 +186,17 @@ func (a *Analyzer) Analyze(ctx context.Context, in AnalyzeInput) (*Detail, error
 		Reasons:  reasons,
 		PainJSON: painJSON(pains),
 		Status:   "analyzed",
+		Analysis: analysis,
 	}
-	if err := a.st.CreateOpportunity(ctx, &opp); err != nil {
-		return nil, err
-	}
-
 	evidence := mergeEvidence(zhihu, global, hot, maxEvidence)
-	if err := a.st.SaveEvidence(ctx, opp.ID, evidence); err != nil {
-		return nil, err
-	}
 
 	out := &Detail{Opportunity: opp, Evidence: evidence, Reasons: reasons}
-	if msg := degradedMessage(errZhihu, errGlobal, errHot); msg != "" {
-		out.Degraded = true
-		out.DegradedReason = msg
-	}
+	out.setDegradation()
 	return out, nil
+}
+
+func (a *Analyzer) Save(ctx context.Context, detail *Detail) error {
+	return a.st.SaveAnalysis(ctx, &detail.Opportunity, detail.Evidence)
 }
 
 func (a *Analyzer) Get(ctx context.Context, id int64) (*Detail, error) {
@@ -147,7 +208,16 @@ func (a *Analyzer) Get(ctx context.Context, id int64) (*Detail, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Detail{Opportunity: *opp, Evidence: evidence, Reasons: opp.Reasons}, nil
+	if opp.Scores.Cost != nil {
+		cost, err := a.st.LatestCost(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		opp.Reasons = opp.ReasonsWithCost(cost)
+	}
+	detail := &Detail{Opportunity: *opp, Evidence: evidence, Reasons: opp.Reasons}
+	detail.setDegradation()
+	return detail, nil
 }
 
 func (a *Analyzer) List(ctx context.Context, limit int) ([]store.Opportunity, error) {
@@ -157,13 +227,21 @@ func (a *Analyzer) List(ctx context.Context, limit int) ([]store.Opportunity, er
 func (a *Analyzer) call(ctx context.Context, fn func(context.Context) ([]source.Post, error)) ([]source.Post, error) {
 	c, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	return fn(c)
+	posts, err := fn(c)
+	if err != nil && c.Err() != nil {
+		return nil, c.Err()
+	}
+	return posts, err
 }
 
 func (a *Analyzer) callText(ctx context.Context, prompt string) (string, error) {
 	c, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	return a.src.Ask(c, prompt)
+	answer, err := a.src.Ask(c, prompt)
+	if err != nil && c.Err() != nil {
+		return "", c.Err()
+	}
+	return answer, err
 }
 
 // buildPrompt 只喂 Top5 的标题与摘要：直答的输入越长越容易跑偏，而证据链
@@ -189,23 +267,27 @@ type painPoint struct {
 	EvidenceURL string `json:"evidence_url"`
 }
 
+func answerPoints(raw string) []painPoint {
+	var payload struct {
+		PainPoints []painPoint `json:"pain_points"`
+	}
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &payload); err != nil {
+		return nil
+	}
+	return payload.PainPoints
+}
+
 // parsePains 解析模型输出，并**只保留链接出现在本次检索结果里的痛点**。
 //
 // 这是防幻觉的关键：模型很擅长编一个看起来合理的知乎链接，而"看起来像链接"
 // 用前缀检查挡不住，必须对照白名单。
 func parsePains(raw string, allowed map[string]bool) []domain.Pain {
-	body := extractJSON(raw)
-	if body == "" {
+	points := answerPoints(raw)
+	if points == nil {
 		return nil
 	}
-	var payload struct {
-		PainPoints []painPoint `json:"pain_points"`
-	}
-	if err := json.Unmarshal([]byte(body), &payload); err != nil {
-		return nil
-	}
-	out := make([]domain.Pain, 0, len(payload.PainPoints))
-	for _, p := range payload.PainPoints {
+	out := make([]domain.Pain, 0, len(points))
+	for _, p := range points {
 		if p.Severity < 1 || p.Severity > 5 {
 			continue
 		}
@@ -313,25 +395,47 @@ func painJSON(pains []domain.Pain) string {
 	return string(raw)
 }
 
-// degradedMessage 把三路失败归纳成一句给用户看的话。
-func degradedMessage(errs ...error) string {
+var errAnswerFormat = errors.New("直答响应格式无效")
+
+func (a *Analyzer) sourceError(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "请求超时"
+	case errors.Is(err, context.Canceled):
+		return "已取消"
+	case errors.Is(err, source.ErrQuotaExhausted):
+		return "配额耗尽"
+	case errors.Is(err, source.ErrRateLimited):
+		return "上游限流"
+	case errors.Is(err, source.ErrUnauthorized):
+		return "知乎凭证无效"
+	case errors.Is(err, errAnswerFormat):
+		return err.Error()
+	}
+	switch a.SourceMode() {
+	case "fixture":
+		return "该品类缺少离线快照"
+	case "unavailable":
+		return "数据源未配置或快照未能加载"
+	default:
+		return "上游请求失败"
+	}
+}
+
+func (detail *Detail) setDegradation() {
+	if detail.Opportunity.Analysis == nil {
+		return
+	}
 	var parts []string
-	labels := []string{"知乎搜索", "全网搜索", "热榜"}
-	for i, err := range errs {
-		if err == nil {
-			continue
-		}
-		switch {
-		case errors.Is(err, source.ErrQuotaExhausted):
-			parts = append(parts, labels[i]+"配额耗尽")
-		case errors.Is(err, source.ErrRateLimited):
-			parts = append(parts, labels[i]+"被限流")
-		default:
-			parts = append(parts, labels[i]+"不可用")
+	for _, item := range []struct{ key, label string }{
+		{ZhihuSearch, "知乎搜索"}, {GlobalSearch, "全网搜索"}, {Hot, "热榜"}, {Answer, "直答"},
+	} {
+		if update := detail.Opportunity.Analysis.Sources[item.key]; update.Status == "failed" {
+			parts = append(parts, item.label+"："+update.Reason)
 		}
 	}
-	if len(parts) == 0 {
-		return ""
+	if len(parts) > 0 {
+		detail.Degraded = true
+		detail.DegradedReason = strings.Join(parts, "；")
 	}
-	return strings.Join(parts, "；") + "，本次分数按可用维度归一化"
 }

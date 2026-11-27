@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { Link, useQuery } from '../router'
-import type { ReportSection } from '../types'
+import type { OpportunityDetail, ReportSection } from '../types'
 
 // #13 报告页：章节导航 + PDF 预览 + 导出。
 // 章节结构由后端 /api/opportunity 的机会数据推导（六节固定 + 顾虑触发条件节）；
@@ -25,22 +25,11 @@ const TRIGGER: Record<string, string> = {
   compliance: '认证门槛', logistics: '物流成本', aftersales: '售后退换',
 }
 
-type OpportunityDetail = {
-  opportunity: {
-    id: number
-    name: string
-    keyword: string
-    category: string
-    verdict: string
-    reasons: string[]
-    created_at: string
-  }
-}
-
 export default function ReportPage({ id }: Props) {
   const sectionsQuery = useQuery('sections')
-  const sectionsParam = sectionsQuery ?? ''
   const [detail, setDetail] = useState<OpportunityDetail | null>(null)
+  const sectionsParam = sectionsQuery ?? detail?.opportunity.analysis?.plan?.sections?.join(',') ?? ''
+  const reportUrl = `/api/opportunities/${encodeURIComponent(id)}/report?sections=${encodeURIComponent(sectionsParam)}`
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
@@ -87,7 +76,7 @@ export default function ReportPage({ id }: Props) {
     setGenerating(true)
     setPreviewError('')
     try {
-      const res = await fetch(`/api/opportunities/${encodeURIComponent(id)}/report?sections=${encodeURIComponent(sectionsParam)}`, {
+      const res = await fetch(reportUrl, {
         credentials: 'same-origin',
       })
       if (!res.ok) {
@@ -106,13 +95,13 @@ export default function ReportPage({ id }: Props) {
     } finally {
       setGenerating(false)
     }
-  }, [id, sectionsParam])
+  }, [reportUrl])
 
-  useEffect(() => { void generate() }, [generate])
+  useEffect(() => { if (detail) void generate() }, [detail, generate])
 
   const download = () => {
     const a = document.createElement('a')
-    a.href = `/api/opportunities/${encodeURIComponent(id)}/report?sections=${encodeURIComponent(sectionsParam)}`
+    a.href = reportUrl
     a.download = `report-${id}.pdf`
     document.body.appendChild(a)
     a.click()
@@ -156,10 +145,10 @@ export default function ReportPage({ id }: Props) {
         {error ? <div className="notice notice--danger" role="alert">{error}</div> : null}
 
         <div className="row">
-          <button className="btn" type="button" onClick={() => void generate()} disabled={generating}>
+          <button className="btn" type="button" onClick={() => void generate()} disabled={generating || !detail}>
             {generating ? '生成中…' : '重新生成预览'}
           </button>
-          <button className="btn btn--ghost" type="button" onClick={download}>下载 PDF</button>
+          <button className="btn btn--ghost" type="button" onClick={download} disabled={!detail}>下载 PDF</button>
           {dirty ? <span className="badge badge--warn">内容已更新，建议重新生成</span> : null}
         </div>
 
@@ -179,7 +168,7 @@ export default function ReportPage({ id }: Props) {
         )}
 
         <p className="muted">
-          <Link to={`/opportunity/${encodeURIComponent(id)}/supply`}>← 去供应链比价</Link>
+          <Link to={`/opportunity/${encodeURIComponent(id)}`}>← 返回验证卡</Link>
         </p>
       </div>
     </section>

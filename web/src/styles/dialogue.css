@@ -1,0 +1,331 @@
+.dialogue__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  align-items: start;
+  gap: var(--sp-5);
+}
+
+.dialogue__main,
+.dialogue__slots {
+  min-width: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+}
+
+.dialogue__thread {
+  min-height: 308px;
+  max-height: min(44vh, 440px);
+  overflow: auto;
+  padding: var(--sp-5);
+  scrollbar-gutter: stable;
+}
+
+.dialogue__empty h2,
+.dialogue__slot-header h2,
+.dialogue__analysis-heading h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.dialogue__empty h2 {
+  font-size: var(--fs-xl);
+}
+
+.dialogue__empty p {
+  margin: var(--sp-1) 0 var(--sp-4);
+}
+
+.dialogue ul,
+.dialogue ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dialogue__examples,
+.dialogue__messages {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.dialogue__examples button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  font: inherit;
+  line-height: 1.45;
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.dialogue__examples button span:first-of-type {
+  grid-column: 1;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.dialogue__example-arrow {
+  grid-area: 1 / 2 / 3;
+  align-self: center;
+  color: var(--c-text-muted);
+}
+
+.dialogue__messages {
+  gap: var(--sp-4);
+}
+
+.dialogue__message {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-1);
+}
+
+.dialogue__message--user {
+  justify-items: end;
+}
+
+.dialogue__speaker {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.dialogue__bubble {
+  max-width: min(90%, 560px);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+
+.dialogue__message--user .dialogue__bubble {
+  background: var(--c-surface-muted);
+}
+
+.dialogue__bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.dialogue__bubble .dialogue__receipt {
+  margin-top: var(--sp-1);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.dialogue__composer,
+.dialogue__analysis {
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--c-border);
+}
+
+.dialogue textarea,
+.dialogue select {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  font: inherit;
+  color: var(--c-text);
+  background: var(--c-surface);
+}
+
+.dialogue textarea {
+  display: block;
+  resize: vertical;
+  min-height: 64px;
+}
+
+.dialogue textarea:focus-visible,
+.dialogue select:focus-visible,
+.dialogue__examples button:focus-visible,
+.dialogue__slot:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+
+.dialogue textarea:disabled {
+  background: var(--c-bg);
+}
+
+.dialogue__composer-bottom,
+.dialogue__analysis-heading,
+.dialogue__slot-header,
+.dialogue__slot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.dialogue__composer-bottom {
+  margin-top: var(--sp-2);
+}
+
+.dialogue__composer-bottom .btn {
+  min-width: 76px;
+}
+
+.dialogue__new {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dialogue__analysis {
+  background: var(--c-bg);
+}
+
+.dialogue__analysis .btn {
+  flex: none;
+  text-decoration: none;
+}
+
+.dialogue .dialogue__progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.dialogue__source {
+  display: grid;
+  align-content: start;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  font-size: var(--fs-sm);
+}
+
+.dialogue__source span,
+.dialogue__source small {
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.dialogue__source--succeeded span {
+  color: var(--c-ok);
+}
+
+.dialogue__source--failed span,
+.dialogue__source--failed small,
+.dialogue__error {
+  color: var(--c-danger);
+}
+
+.dialogue__source--running {
+  border-color: var(--c-border-strong);
+}
+
+.dialogue__notice {
+  padding: var(--sp-2) var(--sp-5);
+  border-top: 1px solid var(--c-border);
+}
+
+.dialogue__error {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.dialogue__notice .dialogue__error {
+  margin: 0;
+}
+
+.dialogue__slot-header {
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.dialogue__slots li {
+  border-top: 1px solid var(--c-border);
+}
+
+.dialogue__slot {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dialogue__slot:hover:not(:disabled),
+.dialogue__examples button:hover:not(:disabled) {
+  background: var(--c-surface-muted);
+}
+
+.dialogue__examples button:disabled,
+.dialogue__slot:disabled {
+  cursor: default;
+}
+
+.dialogue__slot strong,
+.dialogue__slot strong + span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.dialogue__slot strong small,
+.dialogue__slot-edit {
+  margin-left: var(--sp-2);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.dialogue__slot-edit {
+  flex: none;
+}
+
+.dialogue__slot:disabled .dialogue__slot-edit {
+  visibility: hidden;
+}
+
+.dialogue__slot-editor {
+  padding: 0 var(--sp-4) var(--sp-3);
+}
+
+.dialogue__slot-editor fieldset {
+  display: grid;
+  gap: var(--sp-1);
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.dialogue__slot-editor input[type='checkbox'] {
+  width: auto;
+}
+
+.dialogue__slot-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+@media (max-width: 760px) {
+  .dialogue__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dialogue__thread {
+    min-height: 260px;
+    max-height: 420px;
+  }
+}
+
+@media (max-width: 430px) {
+  .dialogue .dialogue__progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

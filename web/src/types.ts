@@ -34,6 +34,41 @@ export type ReefStatus = {
   message?: string
 }
 
+export type OpportunityScores = {
+  demand: number
+  pain: number
+  trend: number
+  competition: number
+  cost: number | null
+  overall: number
+  confidence: number
+}
+
+export type OpportunityEvidence = {
+  source: string
+  title: string
+  snippet: string
+  url: string
+  rank_no: number
+  published_at?: string
+}
+
+export type OpportunityDetail = {
+  opportunity: {
+    id: number
+    name: string
+    category: string
+    created_at: string
+    scores: OpportunityScores
+    verdict: string
+    analysis?: { mode: string; plan?: { target_cny: number | null; sections?: string[] } }
+  }
+  evidence: OpportunityEvidence[]
+  reasons: string[] | null
+  degraded: boolean
+  degraded_reason?: string
+}
+
 /** #11 供应链 */
 export type Tier = { min_qty: number; unit_price: number }
 export type Supplier = {

@@ -16,6 +16,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [logoutError, setLogoutError] = useState('')
 
   const user = state.status === 'authed' ? state.user : null
+  const signedIn = state.status === 'authed'
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true)
@@ -31,8 +32,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    void loadStatus()
-  }, [loadStatus])
+    if (signedIn) void loadStatus()
+  }, [signedIn, loadStatus])
 
   const onLogout = useCallback(async () => {
     setLogoutError('')
@@ -73,7 +74,7 @@ export default function Shell({ children }: { children: ReactNode }) {
               className="btn btn--ghost btn--sm"
               type="button"
               onClick={() => void onLogout()}
-              disabled={loggingOut}
+              disabled={!signedIn || loggingOut}
             >
               {loggingOut ? '退出中…' : '退出'}
             </button>
@@ -91,7 +92,7 @@ export default function Shell({ children }: { children: ReactNode }) {
             className="btn btn--ghost btn--sm"
             type="button"
             onClick={() => void loadStatus()}
-            disabled={statusLoading}
+            disabled={!signedIn || statusLoading}
           >
             {statusLoading ? '检测中…' : '重新检测'}
           </button>

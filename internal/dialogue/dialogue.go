@@ -92,16 +92,16 @@ func Questions() []Question {
 type Answers map[string]string
 
 type Plan struct {
-	Keyword     string
-	Category    string
-	Market      string
-	TargetUSD   *float64
-	TargetCNY   *float64
-	SupplyBase  string
-	Concerns    []string
-	Depth       string
-	EvidenceMax int
-	Sections    []string // 报告的条件章节 key
+	Keyword     string   `json:"keyword"`
+	Category    string   `json:"category"`
+	Market      string   `json:"market"`
+	TargetUSD   *float64 `json:"target_usd"`
+	TargetCNY   *float64 `json:"target_cny"`
+	SupplyBase  string   `json:"supply_base"`
+	Concerns    []string `json:"concerns,omitempty"`
+	Depth       string   `json:"depth"`
+	EvidenceMax int      `json:"evidence_max"`
+	Sections    []string `json:"sections,omitempty"`
 }
 
 // USDToCNY 只是报告与测算的展示换算，不参与任何网络调用。

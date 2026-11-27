@@ -74,20 +74,26 @@ func (rl *rateLimiter) allow(sessionID string) (bool, time.Duration) {
 // withAnalyzeRateLimit 只包分析端点；sessionID 取 radar_session cookie。
 func (s *Server) withAnalyzeRateLimit(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sid := ""
-		if c, err := r.Cookie(cookieName); err == nil {
-			sid = c.Value
+		if s.allowAnalysis(w, r) {
+			next(w, r)
 		}
-		ok, wait := s.limiter.allow(sid)
-		if !ok {
-			if wait < time.Second {
-				wait = time.Second
-			}
-			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(wait.Seconds())))
-			writeErr(w, http.StatusTooManyRequests,
-				fmt.Sprintf("分析过于频繁，请 %.0f 秒后再试（为保护知乎接口配额）", wait.Seconds()))
-			return
-		}
-		next(w, r)
 	}
+}
+
+func (s *Server) allowAnalysis(w http.ResponseWriter, r *http.Request) bool {
+	sid := ""
+	if c, err := r.Cookie(cookieName); err == nil {
+		sid = c.Value
+	}
+	ok, wait := s.limiter.allow(sid)
+	if ok {
+		return true
+	}
+	if wait < time.Second {
+		wait = time.Second
+	}
+	w.Header().Set("Retry-After", fmt.Sprintf("%d", int(wait.Seconds())))
+	writeErr(w, http.StatusTooManyRequests,
+		fmt.Sprintf("分析过于频繁，请 %.0f 秒后再试（为保护知乎接口配额）", wait.Seconds()))
+	return false
 }
