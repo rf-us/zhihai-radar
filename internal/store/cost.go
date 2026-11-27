@@ -16,6 +16,7 @@ type CostRecord struct {
 	OpportunityID int64                `json:"opportunity_id"`
 	BOM           []domain.CostLine    `json:"bom"`
 	Breakdown     domain.CostBreakdown `json:"breakdown"`
+	Extras        domain.CostExtras    `json:"extras"`
 	CreatedAt     time.Time            `json:"created_at"`
 }
 
@@ -24,6 +25,11 @@ type CostRecord struct {
 // calc_version 通过 price_source 之外的独立字段区分算法版本时再用；
 // 当前算法只有一个版本（domain.EstimateCost），先用 bom_json + 时间可追溯。
 func (s *Store) SaveCost(ctx context.Context, opportunityID int64, bom []domain.CostLine, cb domain.CostBreakdown) error {
+	return s.SaveCostWithExtras(ctx, opportunityID, bom, cb, domain.CostExtras{})
+}
+
+// SaveCostWithExtras 与 SaveCost 相同，但额外落库包装/运费/佣金率。
+func (s *Store) SaveCostWithExtras(ctx context.Context, opportunityID int64, bom []domain.CostLine, cb domain.CostBreakdown, extras domain.CostExtras) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -43,9 +49,10 @@ func (s *Store) SaveCost(ctx context.Context, opportunityID int64, bom []domain.
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO cost_model
-		(opportunity_id,bom_json,total_cost,suggested_price,margin,price_source,created_at)
-		VALUES(?,?,?,?,?,?,?)`,
-		opportunityID, string(bomJSON), cb.TotalCost, cb.Suggested, cb.Margin, cb.PriceSource, now); err != nil {
+		(opportunity_id,bom_json,total_cost,suggested_price,margin,price_source,packaging,freight,commission_rate,created_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		opportunityID, string(bomJSON), cb.TotalCost, cb.Suggested, cb.Margin, cb.PriceSource,
+		extras.Packaging, extras.Freight, extras.CommissionRate, now); err != nil {
 		return fmt.Errorf("store: save cost: %w", err)
 	}
 
@@ -99,12 +106,13 @@ func (s *Store) DeleteCost(ctx context.Context, opportunityID int64) error {
 
 // LatestCost 返回某机会最新一份成本记录；没有则返回 (nil, nil)。
 func (s *Store) LatestCost(ctx context.Context, opportunityID int64) (*CostRecord, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,opportunity_id,bom_json,total_cost,suggested_price,margin,price_source,created_at
+	row := s.db.QueryRowContext(ctx, `SELECT id,opportunity_id,bom_json,total_cost,suggested_price,margin,price_source,packaging,freight,commission_rate,created_at
 		FROM cost_model WHERE opportunity_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, opportunityID)
 	var r CostRecord
 	var bomJSON, created string
 	var cb domain.CostBreakdown
-	err := row.Scan(&r.ID, &r.OpportunityID, &bomJSON, &cb.TotalCost, &cb.Suggested, &cb.Margin, &cb.PriceSource, &created)
+	err := row.Scan(&r.ID, &r.OpportunityID, &bomJSON, &cb.TotalCost, &cb.Suggested, &cb.Margin, &cb.PriceSource,
+		&r.Extras.Packaging, &r.Extras.Freight, &r.Extras.CommissionRate, &created)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

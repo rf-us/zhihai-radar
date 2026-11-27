@@ -122,3 +122,34 @@ func TestCostRejectsInvalid(t *testing.T) {
 		}
 	}
 }
+
+func TestCostCommissionOver100Rejected(t *testing.T) {
+	s, oid := newCostTestServer(t)
+	url := "/api/opportunities/" + fmt.Sprint(oid) + "/cost"
+	body := `{"bom":[{"part_name":"x","qty":1,"unit_price":10}],"extras":{"commission_rate":150}}`
+	rec := s.doCost(t, http.MethodPost, url, body)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "commission_rate") {
+		t.Fatalf("佣金 >100%% 应 400 并指明字段：%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCostWithExtrasPersisted(t *testing.T) {
+	s, oid := newCostTestServer(t)
+	url := "/api/opportunities/" + fmt.Sprint(oid) + "/cost"
+	body := `{"bom":[{"part_name":"x","qty":1,"unit_price":10}],"target_price":100,
+	          "extras":{"packaging":8,"freight":12,"commission_rate":15}}`
+	rec := s.doCost(t, http.MethodPost, url, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body.String())
+	}
+	got, err := s.st.LatestCost(context.Background(), oid)
+	if err != nil || got == nil {
+		t.Fatal(err)
+	}
+	if got.Extras.Packaging != 8 || got.Extras.CommissionRate != 15 {
+		t.Fatalf("附加项未落库：%+v", got.Extras)
+	}
+	if math.Abs(got.Breakdown.TotalCost-30) > 0.01 {
+		t.Fatalf("总成本应含包装+运费=30，got %.2f", got.Breakdown.TotalCost)
+	}
+}

@@ -45,6 +45,7 @@ func (s *Server) handleSaveCost(w http.ResponseWriter, r *http.Request, _ *sessi
 		BOM              []domain.CostLine `json:"bom"`
 		TargetPrice      *float64          `json:"target_price"`
 		CompetitorPrices []float64         `json:"competitor_prices"`
+		Extras           domain.CostExtras `json:"extras"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -69,12 +70,16 @@ func (s *Server) handleSaveCost(w http.ResponseWriter, r *http.Request, _ *sessi
 		return
 	}
 
-	cb, ok := domain.EstimateCost(body.BOM, body.TargetPrice, body.CompetitorPrices)
-	if !ok {
-		writeErr(w, http.StatusBadRequest, "无法计算成本：BOM 全部无效")
+	if err := body.Extras.Validate(); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.st.SaveCost(r.Context(), id, body.BOM, cb); err != nil {
+	cb, ok := domain.EstimateCostWithExtras(body.BOM, body.TargetPrice, body.CompetitorPrices, body.Extras)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "无法计算成本：BOM 全部无效或附加项不合法")
+		return
+	}
+	if err := s.st.SaveCostWithExtras(r.Context(), id, body.BOM, cb, body.Extras); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
