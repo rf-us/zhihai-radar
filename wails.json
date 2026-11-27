@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "知海选品雷达",
+  "outputfilename": "zhihai-radar",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "rf-us"
+  },
+  "info": {
+    "companyName": "rf-us",
+    "productName": "知海选品雷达",
+    "productVersion": "0.1.0",
+    "copyright": "© 2026 rf-us"
+  }
+}
