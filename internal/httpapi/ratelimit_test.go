@@ -67,7 +67,7 @@ func newSupplyTestStoreForLimit(t *testing.T) *store.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
+	t.Cleanup(func() { closeTestStore(t, st) })
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}

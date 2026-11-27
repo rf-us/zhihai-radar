@@ -26,6 +26,18 @@ type Config struct {
 
 	// ReadOnly 为 true 时禁止采纳写回（公网 Demo 默认只读，防被扫写脏 RFERP）。
 	ReadOnly bool
+
+	// 知乎 OAuth（可选）：三者都配齐才启用，入口由 /api/auth/config 告知前端。
+	ZhihuOAuthAppID       string
+	ZhihuOAuthAppKey      string
+	ZhihuOAuthRedirectURI string
+}
+
+// OAuthEnabled 表示钩子齐全，可以展示知乎登录入口。
+func (c Config) OAuthEnabled() bool {
+	return strings.TrimSpace(c.ZhihuOAuthAppID) != "" &&
+		strings.TrimSpace(c.ZhihuOAuthAppKey) != "" &&
+		strings.TrimSpace(c.ZhihuOAuthRedirectURI) != ""
 }
 
 func Load() Config {
@@ -43,6 +55,10 @@ func Load() Config {
 		ReefPort:    envInt("REEF_PORT", 8080),
 
 		ReadOnly: strings.EqualFold(strings.TrimSpace(os.Getenv("RADAR_READONLY")), "1"),
+
+		ZhihuOAuthAppID:       os.Getenv("ZHIHU_OAUTH_APP_ID"),
+		ZhihuOAuthAppKey:      os.Getenv("ZHIHU_OAUTH_APP_KEY"),
+		ZhihuOAuthRedirectURI: os.Getenv("ZHIHU_OAUTH_REDIRECT_URI"),
 	}
 }
 

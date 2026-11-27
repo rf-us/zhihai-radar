@@ -24,7 +24,7 @@ func newSupplyTestServer(t *testing.T) (*Server, int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
+	t.Cleanup(func() { closeTestStore(t, st) })
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestSupplyRequiresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	s := New(config.Config{Source: "fixture"}, st)
 	req := httptest.NewRequest(http.MethodGet, "/api/suppliers", nil)
 	rec := httptest.NewRecorder()
