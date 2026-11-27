@@ -19,6 +19,27 @@ jobs:
       - name: test
         run: go test ./... -race -count=1
 
+  # 前端独立构建:先 npm ci && npm run build 生成产物,再 go build 把它 embed 进二进制。
+  # 上面的 go 任务不装 Node,用来证明 `go test` 不依赖前端产物。
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: build frontend
+        working-directory: web
+        run: npm ci && npm run build
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: build single binary with embedded assets
+        run: go build ./cmd/radar
+
   # 真 RFERP 的契约测试。需要仓库 secret REEF_BASE / REEF_USER / REEF_PASS。
   # 没有配置时整步跳过——默认 CI 只跑 httptest 假 RFERP。
   contract-live:

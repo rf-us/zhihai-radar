@@ -17,12 +17,12 @@ import (
 	"sync"
 	"time"
 
+	webassets "github.com/rf-us/zhihai-radar/internal"
 	"github.com/rf-us/zhihai-radar/internal/config"
 	"github.com/rf-us/zhihai-radar/internal/reef"
 	"github.com/rf-us/zhihai-radar/internal/service"
 	"github.com/rf-us/zhihai-radar/internal/source"
 	"github.com/rf-us/zhihai-radar/internal/store"
-	webassets "github.com/rf-us/zhihai-radar/web"
 )
 
 const (
@@ -131,7 +131,10 @@ func (s *Server) Handler() http.Handler {
 	// 采纳写回 RFERP（issue #6：建零件 + 写供应商）
 	mux.HandleFunc("POST /api/opportunities/{id}/adopt/preview", s.requireSession(s.handleAdoptPreview))
 	mux.HandleFunc("POST /api/opportunities/{id}/adopt", s.requireSession(s.handleAdopt))
-	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
+	// 静态资源与前端 history 路由（来自前端骨架）：保留上面所有 API 路由，
+	// 静态服务用前端的 newStaticHandler 以支持 / 直达、未构建回退与 JSON 404。
+	indexHTML, _ := webassets.IndexHTML()
+	mux.Handle("/", newStaticHandler(webassets.FS(), indexHTML, webassets.Fallback()))
 	return s.withLogging(mux)
 }
 

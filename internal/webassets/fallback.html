@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知海选品雷达 · 前端未构建</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f7f7f5; color: #1f1f1d;
+    font: 14px/1.65 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 64px 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  .sub { color: #6b6b66; margin: 0 0 24px; }
+  .card { background: #fff; border: 1px solid #e6e6e1; border-radius: 12px; padding: 20px 22px; }
+  code { background: #f1f1ec; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  ol { margin: 10px 0 0; padding-left: 20px; color: #55554f; }
+  li { margin: 4px 0; }
+  .ok { color: #1d7a52; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>前端未构建</h1>
+  <p class="sub">radar 服务已经起来了,但这个二进制里没有嵌入前端产物。</p>
+  <div class="card">
+    <p class="ok">服务端与本页均正常 —— 只是没有可用的界面。</p>
+    <ol>
+      <li>在 <code>web/</code> 执行 <code>npm ci &amp;&amp; npm run build</code></li>
+      <li>回到仓库根目录执行 <code>go build ./cmd/radar</code>,把产物重新嵌入</li>
+      <li>重启 radar 后刷新本页</li>
+    </ol>
+    <p class="sub" style="margin:16px 0 0">接口(如 <code>/healthz</code>、<code>/api/*</code>)不受影响,仍可正常访问。</p>
+  </div>
+</div>
+</body>
+</html>
