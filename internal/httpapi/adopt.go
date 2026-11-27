@@ -32,6 +32,10 @@ func (s *Server) handleAdoptPreview(w http.ResponseWriter, r *http.Request, sess
 // handleAdopt POST /api/opportunities/{id}/adopt
 // 采纳 Saga：建产品 → 建零件（写供应商）→ 建 BOM → 记录 adoption。
 func (s *Server) handleAdopt(w http.ResponseWriter, r *http.Request, sess *session) {
+	if s.cfg.ReadOnly {
+		writeErr(w, http.StatusForbidden, "当前为只读演示模式，已采纳写回被禁用")
+		return
+	}
 	if sess.user.Role != reef.RoleAdmin {
 		writeErr(w, http.StatusForbidden, "采纳需要管理员账号")
 		return

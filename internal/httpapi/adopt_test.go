@@ -92,3 +92,26 @@ func TestAdoptRequiresCost(t *testing.T) {
 		t.Fatalf("无成本应 400 并提示成本：%d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAdoptBlockedInReadOnlyMode(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "radar.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	_ = st.Migrate(context.Background())
+	cfg := config.Config{Source: "fixture", ReadOnly: true}
+	s := New(cfg, st)
+	o := &store.Opportunity{Keyword: "x", Name: "x"}
+	_ = st.CreateOpportunity(context.Background(), o)
+	const sid = "readonly-session"
+	s.sessions[sid] = &session{token: "t", user: reef.User{Role: reef.RoleAdmin}, expires: time.Now().Add(time.Hour)}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/opportunities/"+fmt.Sprint(o.ID)+"/adopt", strings.NewReader(""))
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: sid})
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "只读") {
+		t.Fatalf("只读模式应 403：%d %s", rec.Code, rec.Body.String())
+	}
+}

@@ -50,6 +50,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	sessions map[string]*session
+	limiter  *rateLimiter
 
 	now func() time.Time
 }
@@ -76,18 +77,20 @@ func New(cfg config.Config, st *store.Store) *Server {
 		analyzer: service.NewAnalyzer(buildSource(cfg), st),
 		sessions: make(map[string]*session),
 		now:      time.Now,
+		limiter:  newRateLimiter(time.Now),
 	}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
 	mux.HandleFunc("POST /api/session", s.handleLogin)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("DELETE /api/session", s.handleLogout)
 	mux.HandleFunc("GET /api/reef/status", s.requireSession(s.handleReefStatus))
 	mux.HandleFunc("GET /api/reef/parts", s.requireSession(s.handleParts))
-	mux.HandleFunc("POST /api/analyze", s.requireSession(s.handleAnalyze))
+	mux.HandleFunc("POST /api/analyze", s.withAnalyzeRateLimit(s.requireSession(s.handleAnalyze)))
 	mux.HandleFunc("GET /api/opportunities", s.requireSession(s.handleListOpportunities))
 	mux.HandleFunc("GET /api/opportunity", s.requireSession(s.handleGetOpportunity))
 	// 供应链比价（issue #4）
@@ -116,6 +119,26 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"time":     s.now().UTC().Format(time.RFC3339),
 		"reefBase": s.cfg.ReefBase,
 	})
+}
+
+// handleReady 回答"能不能干活"：探测运行环境是否连上。
+// 与 healthz 分开——进程活着不代表 RFERP 就绪，部署监控需要后者。
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
+	defer cancel()
+	if _, err := s.reef.Probe(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status": "unavailable", "reason": err.Error(),
+		})
+		return
+	}
+	out := map[string]any{"status": "ready"}
+	if s.reefStatus != nil {
+		for k, v := range s.reefStatus() {
+			out[k] = v
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {

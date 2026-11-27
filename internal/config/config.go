@@ -23,6 +23,9 @@ type Config struct {
 	ReefManaged bool
 	ReefBin     string
 	ReefPort    int
+
+	// ReadOnly 为 true 时禁止采纳写回（公网 Demo 默认只读，防被扫写脏 RFERP）。
+	ReadOnly bool
 }
 
 func Load() Config {
@@ -38,6 +41,8 @@ func Load() Config {
 		ReefManaged: strings.EqualFold(strings.TrimSpace(os.Getenv("REEF_MANAGED")), "1"),
 		ReefBin:     strings.TrimSpace(os.Getenv("REEF_BIN")),
 		ReefPort:    envInt("REEF_PORT", 8080),
+
+		ReadOnly: strings.EqualFold(strings.TrimSpace(os.Getenv("RADAR_READONLY")), "1"),
 	}
 }
 
