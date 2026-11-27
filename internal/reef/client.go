@@ -256,3 +256,11 @@ func (c *Client) CreatePart(ctx context.Context, token string, in CreatePartInpu
 	}
 	return out, nil
 }
+
+// DeletePart 删除一个零件。被产品 BOM 或批次追溯引用时 RFERP 返回 409，
+// 调用方据此判断"零件已保留"（采纳 Saga 的回滚语义）。
+func (c *Client) DeletePart(ctx context.Context, token string, id int64) error {
+	_, err := c.do(ctx, "delete part", http.MethodDelete,
+		fmt.Sprintf("/api/parts?id=%d", id), token, nil)
+	return err
+}

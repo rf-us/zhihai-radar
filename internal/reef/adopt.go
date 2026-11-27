@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -185,8 +186,25 @@ func (c *Client) Adopt(ctx context.Context, token string, in AdoptInput) (AdoptR
 					err, delErr, product.ID)
 				return res, err
 			}
+			// 产品删掉后回收本次新建的零件（issue #6 验收）。
+			// 零件若已被别的产品/批次引用，RFERP 返回 409——保留它并在消息里说明。
+			kept := 0
+			for _, pid := range partIDs {
+				if pErr := c.DeletePart(ctx, token, pid); pErr != nil {
+					var apiErr *APIError
+					if errors.As(pErr, &apiErr) && apiErr.Status == http.StatusConflict {
+						kept++
+						continue
+					}
+					res.Message = fmt.Sprintf("建 BOM 失败（%v），已删产品但零件 %d 回收失败：%v", err, pid, pErr)
+				}
+			}
 			res.Status = StatusRolledBack
-			res.Message = fmt.Sprintf("建 BOM 失败（%v），已删除刚创建的产品 %d", err, product.ID)
+			if kept > 0 {
+				res.Message = fmt.Sprintf("建 BOM 失败（%v），已删产品；%d 个零件已被其他数据引用，按「零件已保留」处理", err, kept)
+			} else if res.Message == "" {
+				res.Message = fmt.Sprintf("建 BOM 失败（%v），已删除刚创建的产品 %d 与本次新建零件", err, product.ID)
+			}
 			return res, err
 		}
 		res.BOMCreated++
