@@ -112,7 +112,7 @@ func TestFullReportFlow(t *testing.T) {
 	if rec.Code != http.StatusOK || !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF-")) {
 		t.Fatalf("端到端导出失败：%d %s", rec.Code, rec.Body.String()[:200])
 	}
-	out := filepath.Join(os.TempDir(), "radar-e2e-report.pdf")
+	out := filepath.Join(t.TempDir(), "radar-e2e-report.pdf")
 	if err := os.WriteFile(out, rec.Body.Bytes(), 0644); err != nil {
 		t.Fatal(err)
 	}

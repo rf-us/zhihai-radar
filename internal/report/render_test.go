@@ -191,7 +191,7 @@ func TestRenderEightPageSample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := filepath.Join(os.TempDir(), "radar-8page-sample.pdf")
+	out := filepath.Join(t.TempDir(), "radar-8page-sample.pdf")
 	if err := os.WriteFile(out, res.PDF, 0o600); err != nil {
 		t.Fatal(err)
 	}
