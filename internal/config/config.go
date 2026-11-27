@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +17,12 @@ type Config struct {
 	// ReefDeviceID 是 RFERP 2.x 局域网版要求的设备指纹。
 	// 未导入授权时，只有"主机"指纹能登录；与服务端同机部署时填 hosts 表里的那条。
 	ReefDeviceID string
+
+	// 托管模式：REEF_MANAGED=1 时由 radar 拉起并监管运行环境子进程，
+	// 自动解析主机指纹、按 REEF_PORT 顺延端口。外部模式（默认）保持原行为。
+	ReefManaged bool
+	ReefBin     string
+	ReefPort    int
 }
 
 func Load() Config {
@@ -27,6 +34,10 @@ func Load() Config {
 		Source:      env("RADAR_SOURCE", "zhihu"),
 
 		ReefDeviceID: os.Getenv("REEF_DEVICE_ID"),
+
+		ReefManaged: strings.EqualFold(strings.TrimSpace(os.Getenv("REEF_MANAGED")), "1"),
+		ReefBin:     strings.TrimSpace(os.Getenv("REEF_BIN")),
+		ReefPort:    envInt("REEF_PORT", 8080),
 	}
 }
 
@@ -42,6 +53,9 @@ func (c Config) Validate() error {
 	if c.Addr == "" {
 		return errors.New("RADAR_ADDR 不能为空")
 	}
+	if c.ReefManaged && c.ReefBin == "" {
+		return errors.New("托管模式需要 REEF_BIN 指定运行环境可执行文件")
+	}
 	return nil
 }
 
@@ -50,6 +64,18 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 || n > 65535 {
+		return fallback
+	}
+	return n
 }
 
 // FixtureDir 是离线快照目录（RADAR_SOURCE=fixture 时读取）。

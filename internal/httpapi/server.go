@@ -44,10 +44,28 @@ type Server struct {
 	reef     *reef.Client
 	analyzer *service.Analyzer
 
+	// reefStatus 由托管模式注入，供 /api/reef/status 展示子进程状态（down/exitCode）。
+	// 外部模式为 nil，此时状态只探测 reef 连通性。
+	reefStatus func() map[string]any
+
 	mu       sync.Mutex
 	sessions map[string]*session
 
 	now func() time.Time
+}
+
+// WithReefStatus 注入托管运行状态（仅 main 在托管模式调用）。
+func WithReefStatus(f func() map[string]any) func(*Server) {
+	return func(s *Server) { s.reefStatus = f }
+}
+
+// NewWithOptions 在 New 基础上应用可选装配；测试与 main 都可用。
+func NewWithOptions(cfg config.Config, st *store.Store, opts ...func(*Server)) *Server {
+	s := New(cfg, st)
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func New(cfg config.Config, st *store.Store) *Server {
@@ -158,6 +176,13 @@ func (s *Server) handleReefStatus(w http.ResponseWriter, r *http.Request, sess *
 		"user":      sess.user,
 		"canAdopt":  sess.user.Role == reef.RoleAdmin,
 		"reefBase":  s.cfg.ReefBase,
+	}
+	// 托管模式：先把子进程状态放进去；下面连通性结果会覆盖 connected/message。
+	// 指纹只由注入函数给前 8 位，这里不再拼完整值。
+	if s.reefStatus != nil {
+		for k, v := range s.reefStatus() {
+			out[k] = v
+		}
 	}
 	info, err := s.reef.Probe(ctx)
 	if err != nil {

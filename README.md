@@ -54,6 +54,9 @@ go run ./cmd/radar
 | `RADAR_DATA_DIR` | `./data` | SQLite 与缓存目录 |
 | `REEF_BASE` | `http://127.0.0.1:8080` | RFERP 地址 |
 | `REEF_DEVICE_ID` | 空 | RFERP 2.x 局域网版要求的设备指纹；对接 ≤ 4d73ae7 的旧版时留空 |
+| `REEF_MANAGED` | 空 | `1` 时由 radar 托管运行环境子进程并自动发现主机指纹 |
+| `REEF_BIN` | 空 | 托管模式下的运行环境可执行文件路径 |
+| `REEF_PORT` | `8080` | 托管模式期望端口；被占用时依次顺延到 8084 |
 | `ZHIHU_ACCESS_SECRET` | 空 | 知乎 Access Secret，**只从环境变量读** |
 | `RADAR_SOURCE` | `zhihu` | `zhihu` / `fixture`（离线演示） |
 
@@ -62,6 +65,7 @@ go run ./cmd/radar
 ```
 cmd/radar/           入口
 internal/reef/       RFERP 客户端 + 采纳 Saga + 契约测试
+internal/reefhost/   运行环境托管：子进程生命周期 / 指纹发现 / 脱敏
 internal/domain/     五维模型（纯函数，无 IO）
 internal/source/     知乎适配（待建：四接口 / 缓存 / 配额 / fixture）
 internal/store/      SQLite 仓储与版本化迁移
