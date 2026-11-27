@@ -97,6 +97,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/opportunities/{id}/quotes", s.requireSession(s.handleCreateQuote))
 	mux.HandleFunc("GET /api/opportunities/{id}/quotes/compare", s.requireSession(s.handleCompareQuotes))
 	mux.HandleFunc("POST /api/opportunities/{id}/quotes/{qid}/select", s.requireSession(s.handleSelectQuote))
+	// 成本测算与 D5 回写（issue #5）
+	mux.HandleFunc("GET /api/opportunities/{id}/cost", s.requireSession(s.handleGetCost))
+	mux.HandleFunc("POST /api/opportunities/{id}/cost", s.requireSession(s.handleSaveCost))
+	mux.HandleFunc("DELETE /api/opportunities/{id}/cost", s.requireSession(s.handleDeleteCost))
 	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
 	return s.withLogging(mux)
 }

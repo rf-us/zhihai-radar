@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rf-us/zhihai-radar/internal/domain"
 )
@@ -14,7 +15,12 @@ func newTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
+	t.Cleanup(func() {
+		_ = st.Close()
+		// Windows 上 SQLite 关闭后 WAL/SHM 落盘有极短延迟；t.TempDir 的清理
+		// 会立刻删目录，偶发 "directory is not empty"。等一拍再让 TempDir 删。
+		time.Sleep(30 * time.Millisecond)
+	})
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

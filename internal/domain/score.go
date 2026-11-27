@@ -31,12 +31,12 @@ type Pain struct {
 }
 
 type CostLine struct {
-	PartID    int64
-	PartName  string
-	Qty       float64
-	UnitPrice float64
-	LossRate  float64
-	UseMode   int // 0 每台用 N 个 / 1 每 M 台用 1 个（Qty 即 M）
+	PartID    int64   `json:"part_id,omitempty"`
+	PartName  string  `json:"part_name"`
+	Qty       float64 `json:"qty"`
+	UnitPrice float64 `json:"unit_price"`
+	LossRate  float64 `json:"loss_rate"`
+	UseMode   int     `json:"use_mode"` // 0 每台用 N 个 / 1 每 M 台用 1 个（Qty 即 M）
 }
 
 type Input struct {
