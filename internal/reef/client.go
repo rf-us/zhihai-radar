@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,13 @@ import (
 type Client struct {
 	base string
 	hc   *http.Client
+
+	// deviceID 对应 RFERP 2.x 局域网版的准入要求。
+	//
+	// 2.1.1 起，登录与**每一个**已认证请求都必须带 X-RFERP-Device-ID，且与
+	// 会话绑定的设备一致；不携带会被当作 device_missing，换了值则 401。
+	// 未导入授权时只有"主机"指纹能登录——radar 与服务端同机部署时，填主机指纹即可。
+	deviceID string
 }
 
 func New(base string) *Client {
@@ -27,6 +35,14 @@ func New(base string) *Client {
 		hc:   &http.Client{Timeout: 20 * time.Second},
 	}
 }
+
+// WithDevice 设置设备指纹；空值表示目标是不要求设备标识的旧版 RFERP（≤ 4d73ae7）。
+func (c *Client) WithDevice(id string) *Client {
+	c.deviceID = strings.TrimSpace(id)
+	return c
+}
+
+func (c *Client) DeviceID() string { return c.deviceID }
 
 // NewWithHTTPClient 供测试注入短超时。
 func NewWithHTTPClient(base string, hc *http.Client) *Client {
@@ -159,6 +175,10 @@ func (c *Client) do(ctx context.Context, op, method, path, token string, in any)
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if c.deviceID != "" {
+		req.Header.Set("X-RFERP-Device-ID", c.deviceID)
+		req.Header.Set("X-RFERP-Client-OS", runtime.GOOS)
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {

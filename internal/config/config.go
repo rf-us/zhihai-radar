@@ -12,6 +12,10 @@ type Config struct {
 	ReefBase    string
 	ZhihuSecret string
 	Source      string // zhihu | fixture
+
+	// ReefDeviceID 是 RFERP 2.x 局域网版要求的设备指纹。
+	// 未导入授权时，只有"主机"指纹能登录；与服务端同机部署时填 hosts 表里的那条。
+	ReefDeviceID string
 }
 
 func Load() Config {
@@ -21,6 +25,8 @@ func Load() Config {
 		ReefBase:    env("REEF_BASE", "http://127.0.0.1:8080"),
 		ZhihuSecret: os.Getenv("ZHIHU_ACCESS_SECRET"),
 		Source:      env("RADAR_SOURCE", "zhihu"),
+
+		ReefDeviceID: os.Getenv("REEF_DEVICE_ID"),
 	}
 }
 

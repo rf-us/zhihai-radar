@@ -332,3 +332,33 @@ func TestAdoptIsIdempotent(t *testing.T) {
 		t.Fatalf("重复采纳不能产生第二个产品，实际 %d 个", len(f.products))
 	}
 }
+
+func TestDeviceHeaderIsSentOnEveryRequest(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("X-RFERP-Device-ID"))
+		switch r.URL.Path {
+		case "/api/login":
+			fmt.Fprint(w, `{"token":"t0","user":{"id":1,"username":"admin","role":"admin"}}`)
+		case "/api/me":
+			fmt.Fprint(w, `{"id":1,"username":"admin","role":"admin"}`)
+		default:
+			fmt.Fprint(w, `null`)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL).WithDevice("dev-abc")
+	ctx := context.Background()
+	if _, err := c.Login(ctx, "admin", "pw"); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if _, err := c.Me(ctx, "t0"); err != nil {
+		t.Fatalf("me: %v", err)
+	}
+	for i, v := range got {
+		if v != "dev-abc" {
+			t.Fatalf("第 %d 个请求没带设备标识（RFERP 2.1.1 会返回 401）: %q", i+1, v)
+		}
+	}
+}

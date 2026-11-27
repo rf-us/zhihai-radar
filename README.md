@@ -53,6 +53,7 @@ go run ./cmd/radar
 | `RADAR_ADDR` | `:8090` | 监听地址 |
 | `RADAR_DATA_DIR` | `./data` | SQLite 与缓存目录 |
 | `REEF_BASE` | `http://127.0.0.1:8080` | RFERP 地址 |
+| `REEF_DEVICE_ID` | 空 | RFERP 2.x 局域网版要求的设备指纹；对接 ≤ 4d73ae7 的旧版时留空 |
 | `ZHIHU_ACCESS_SECRET` | 空 | 知乎 Access Secret，**只从环境变量读** |
 | `RADAR_SOURCE` | `zhihu` | `zhihu` / `fixture`（离线演示） |
 

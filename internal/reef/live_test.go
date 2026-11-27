@@ -30,6 +30,9 @@ func TestLiveContract(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	c := New(base)
+	if id := os.Getenv("REEF_DEVICE_ID"); id != "" {
+		c = c.WithDevice(id)
+	}
 
 	info, err := c.Probe(ctx)
 	if err != nil {

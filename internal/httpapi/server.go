@@ -51,7 +51,7 @@ func New(cfg config.Config, st *store.Store) *Server {
 	return &Server{
 		cfg:      cfg,
 		st:       st,
-		reef:     reef.New(cfg.ReefBase),
+		reef:     reef.New(cfg.ReefBase).WithDevice(cfg.ReefDeviceID),
 		sessions: make(map[string]*session),
 		now:      time.Now,
 	}

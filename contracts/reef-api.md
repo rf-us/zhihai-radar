@@ -192,3 +192,33 @@ P1：用于判断采纳的产品是否已经投产。
 REEF_BASE=http://127.0.0.1:8080 REEF_USER=admin REEF_PASS=*** \
   go test ./internal/reef -tags=live -v
 ```
+
+---
+
+## 附：2.1.1 的破坏性变更（2026-11-27 实测）
+
+上游 `rf-us/RFERP@92d516d`（v2.1.1）引入了局域网授权与设备准入，**旧契约不再够用**：
+
+| 变更 | 影响 |
+|---|---|
+| 登录与**每个**已认证请求都要带 `X-RFERP-Device-ID` | 不带走 `400 device_missing`；登录后再去掉走 `401` |
+| 会话与设备绑定 | 同一 token 换一个设备标识即失效 |
+| 未导入授权时只有**主机**指纹可登录 | 其他设备返回 `403 license_missing`（"当前仅主机可登录"） |
+| 登录响应新增 `runtime` 对象 | `licensed / max_clients / used_clients / policy_message` |
+| schema 13 → **20** | 旧库启动时自动迁移（会先备份） |
+
+### 设备指纹怎么来
+
+服务端启动时会把主机指纹写进 `devices` 表（`kind=host`），值即 `SHA-256(MachineGuid + 系统盘卷序列号 + CPU 标识)`。
+radar 与服务端同机部署时，把它填进 `REEF_DEVICE_ID` 即可：
+
+```bash
+python -c "import sqlite3;print(sqlite3.connect('data/rferp.db').execute(\"select device_id_hash from devices where kind='host'\").fetchone()[0])"
+```
+
+### 对雷达的影响
+
+- 客户端必须支持设备头（已实现：`reef.Client.WithDevice`）；
+- **radar 必须与 RFERP 同机部署**，或在 RFERP 侧导入授权并登记为客户端设备；
+  云端 radar 连本地 RFERP 的模式在 2.1.1 上不可行；
+- 若对接的是 ≤ `4d73ae7` 的旧版，`REEF_DEVICE_ID` 留空即可，行为与旧契约一致。
