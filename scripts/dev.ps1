@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("vet", "test", "run", "build-server", "build-client", "all")]
+    [ValidateSet("vet", "test", "run", "build-server", "build-client", "web", "all")]
     [string]$Task = "test",
     [string]$Addr = "127.0.0.1:8090",
     [string]$ReefBase = "http://127.0.0.1:8080",
@@ -38,10 +38,22 @@ switch ($Task) {
         Write-Host "客户端（Wails）构建脚本待补：需要 wails.json、前端产物与图标。" -ForegroundColor Yellow
         Write-Host "参考 RFERP 的做法：npm run build:embed → go build -tags desktop,production。" -ForegroundColor Yellow
     }
+    "web" {
+        # 起 Vite dev server;-Addr 同时作为代理目标(RADAR_DEV_URL),默认 127.0.0.1:8090。
+        # 后端请先另开一个终端跑 dev.ps1 -Task run(-Addr 与这里保持一致)。
+        $env:RADAR_DEV_URL = "http://$Addr"
+        Push-Location (Join-Path $root "web")
+        try {
+            Write-Host "Vite dev server,proxy /api -> $Addr (backend: dev.ps1 -Task run)" -ForegroundColor Green
+            npm run dev
+        } finally {
+            Pop-Location
+        }
+    }
     "run" {
         if (-not $ReefDeviceID) {
             Write-Warning "未设置 REEF_DEVICE_ID：连接 RFERP 2.x 时登录会返回 device_missing。"
-            Write-Warning "取法：python -c \"import sqlite3;print(sqlite3.connect(r'..\RFERP-local\data\rferp.db').execute(\\\"select device_id_hash from devices where kind='host'\\\").fetchone()[0])\""
+            Write-Warning "取法:查询 RFERP 数据库 devices 表中 kind='host' 的 device_id_hash(步骤见 contracts/reef-api.md)。"
         }
         $env:REEF_BASE = $ReefBase
         $env:REEF_DEVICE_ID = $ReefDeviceID

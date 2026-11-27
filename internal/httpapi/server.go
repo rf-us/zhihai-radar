@@ -17,12 +17,12 @@ import (
 	"sync"
 	"time"
 
+	webassets "github.com/rf-us/zhihai-radar/internal"
 	"github.com/rf-us/zhihai-radar/internal/config"
 	"github.com/rf-us/zhihai-radar/internal/reef"
 	"github.com/rf-us/zhihai-radar/internal/service"
 	"github.com/rf-us/zhihai-radar/internal/source"
 	"github.com/rf-us/zhihai-radar/internal/store"
-	webassets "github.com/rf-us/zhihai-radar/web"
 )
 
 const (
@@ -72,7 +72,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/analyze", s.requireSession(s.handleAnalyze))
 	mux.HandleFunc("GET /api/opportunities", s.requireSession(s.handleListOpportunities))
 	mux.HandleFunc("GET /api/opportunity", s.requireSession(s.handleGetOpportunity))
-	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
+	indexHTML, _ := webassets.IndexHTML()
+	mux.Handle("/", newStaticHandler(webassets.FS(), indexHTML, webassets.Fallback()))
 	return s.withLogging(mux)
 }
 

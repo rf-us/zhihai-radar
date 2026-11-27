@@ -66,7 +66,8 @@ internal/domain/     五维模型（纯函数，无 IO）
 internal/source/     知乎适配（待建：四接口 / 缓存 / 配额 / fixture）
 internal/store/      SQLite 仓储与版本化迁移
 internal/httpapi/    HTTP 面
-web/                 go:embed 的静态资源
+web/                 Vite + React 前端源码(产物输出到 internal/webassets/dist)
+internal/webassets/  go:embed 的构建产物 + 未构建时的占位页
 contracts/           对外可评审的接口契约
 docs/                ADR 与合规披露
 ```
