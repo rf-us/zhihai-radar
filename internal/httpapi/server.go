@@ -261,11 +261,18 @@ func writeReefErr(w http.ResponseWriter, err error) {
 // 当前只支持离线快照；未配置时返回明确的"不可用"，而不是空数据。
 func buildSource(cfg config.Config) source.Source {
 	if cfg.Source != "fixture" {
-		return source.Unavailable{Reason: "未配置知乎数据源（当前仅支持 RADAR_SOURCE=fixture）"}
+		if cfg.ZhihuSecret != "" {
+			return source.NewZhihu(cfg.ZhihuBase(), cfg.ZhihuSecret)
+		}
+		return source.Unavailable{Reason: "未配置 ZHIHU_ACCESS_SECRET，且未指定 RADAR_SOURCE=fixture"}
 	}
 	f, err := source.LoadFixtureDir(cfg.FixtureDir())
 	if err != nil {
 		log.Printf("离线快照加载失败：%v", err)
+		log.Printf("离线快照加载失败：%v，改试真实知乎接口", err)
+		if cfg.ZhihuSecret != "" {
+			return source.NewZhihu(cfg.ZhihuBase(), cfg.ZhihuSecret)
+		}
 		return source.Unavailable{Reason: "离线快照加载失败：" + err.Error()}
 	}
 	return f

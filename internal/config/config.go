@@ -54,3 +54,6 @@ func env(key, fallback string) string {
 
 // FixtureDir 是离线快照目录（RADAR_SOURCE=fixture 时读取）。
 func (c Config) FixtureDir() string { return env("RADAR_FIXTURE_DIR", "./fixtures") }
+
+// ZhihuBase 允许指向本地假服务（测试/联调）；留空用官方域名。
+func (c Config) ZhihuBase() string { return os.Getenv("ZHIHU_BASE") }
