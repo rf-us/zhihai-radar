@@ -1,0 +1,56 @@
+{
+  "_note": "示例数据，用于离线演示与测试；不是真实抓取的知乎内容。采集日期 2026-11-18，来源：知乎开放平台离线回放。",
+  "keyword": "宠物饮水机",
+  "zhihu": [
+    {
+      "title": "宠物饮水机是智商税吗？",
+      "snippet": "用了三个月，猫喝水明显多了，但清洗频率比想象中高。",
+      "url": "https://www.zhihu.com/question/3101/answer/3201",
+      "votes": 156,
+      "comments": 92,
+      "authority": 3,
+      "published_at": "2026-10-08T00:00:00Z"
+    },
+    {
+      "title": "猫为什么不爱喝水",
+      "snippet": "流动水确实能吸引猫，但滤芯半个月就脏得吓人。",
+      "url": "https://www.zhihu.com/question/3102/answer/3202",
+      "votes": 121,
+      "comments": 67,
+      "authority": 2,
+      "published_at": "2026-10-20T00:00:00Z"
+    },
+    {
+      "title": "宠物饮水机怎么选",
+      "snippet": "噪音是大问题，晚上水泵声在卧室很明显。",
+      "url": "https://www.zhihu.com/question/3103/answer/3203",
+      "votes": 88,
+      "comments": 41,
+      "authority": 2,
+      "published_at": "2026-11-01T00:00:00Z"
+    }
+  ],
+  "global": [
+    {
+      "title": "Best pet water fountain 2026",
+      "snippet": "Quiet pump and easy-clean design top the list.",
+      "url": "https://example.com/reviews/pet-fountain-2026",
+      "votes": 0,
+      "comments": 0,
+      "authority": 1,
+      "published_at": "2026-11-05T00:00:00Z"
+    },
+    {
+      "title": "Pet fountain filter replacement guide",
+      "snippet": "Average filter life 2-4 weeks depending on usage.",
+      "url": "https://example.com/pets/filter-guide",
+      "votes": 0,
+      "comments": 0,
+      "authority": 1,
+      "published_at": "2026-11-11T00:00:00Z"
+    }
+  ],
+  "hot": [],
+  "answer": "{\"pain_points\":[{\"text\":\"滤芯寿命短，半个月就脏\",\"severity\":5,\"evidence_url\":\"https://www.zhihu.com/question/3102/answer/3202\"},{\"text\":\"水泵噪音大，夜间明显\",\"severity\":4,\"evidence_url\":\"https://www.zhihu.com/question/3103/answer/3203\"},{\"text\":\"清洗频率高，结构难拆\",\"severity\":4,\"evidence_url\":\"https://www.zhihu.com/question/3101/answer/3201\"}]}",
+  "collected_at": "2026-11-18"
+}
