@@ -90,6 +90,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/analyze", s.requireSession(s.handleAnalyze))
 	mux.HandleFunc("GET /api/opportunities", s.requireSession(s.handleListOpportunities))
 	mux.HandleFunc("GET /api/opportunity", s.requireSession(s.handleGetOpportunity))
+	// 供应链比价（issue #4）
+	mux.HandleFunc("GET /api/suppliers", s.requireSession(s.handleListSuppliers))
+	mux.HandleFunc("POST /api/suppliers", s.requireSession(s.handleCreateSupplier))
+	mux.HandleFunc("GET /api/opportunities/{id}/quotes", s.requireSession(s.handleListQuotes))
+	mux.HandleFunc("POST /api/opportunities/{id}/quotes", s.requireSession(s.handleCreateQuote))
+	mux.HandleFunc("GET /api/opportunities/{id}/quotes/compare", s.requireSession(s.handleCompareQuotes))
+	mux.HandleFunc("POST /api/opportunities/{id}/quotes/{qid}/select", s.requireSession(s.handleSelectQuote))
 	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
 	return s.withLogging(mux)
 }
@@ -293,7 +300,6 @@ func buildSource(cfg config.Config) source.Source {
 	}
 	f, err := source.LoadFixtureDir(cfg.FixtureDir())
 	if err != nil {
-		log.Printf("离线快照加载失败：%v", err)
 		log.Printf("离线快照加载失败：%v，改试真实知乎接口", err)
 		if cfg.ZhihuSecret != "" {
 			return source.NewZhihu(cfg.ZhihuBase(), cfg.ZhihuSecret)
