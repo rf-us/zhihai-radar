@@ -115,6 +115,7 @@ func TestZhihuErrorMapping(t *testing.T) {
 		{"配额码", http.StatusOK, `{"Code":30002,"Message":"额度已用完"}`, ErrQuotaExhausted},
 		{"频限码", http.StatusOK, `{"Code":30001,"Message":"请求过快"}`, ErrRateLimited},
 		{"500", http.StatusInternalServerError, ``, ErrUnavailable},
+		{"200+鉴权码", http.StatusOK, `{"Code":20001,"Message":"Authorization failed"}`, ErrUnauthorized},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

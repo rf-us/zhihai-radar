@@ -266,6 +266,9 @@ func (z *Zhihu) do(req *http.Request) ([]byte, error) {
 // codeError 把业务码翻成哨兵错误。30001/30002 是官方文档里的频限与配额。
 func codeError(code int, msg string) error {
 	switch code {
+	case 20001:
+		// 内容接口鉴权失败时仍返回 HTTP 200，只能靠业务码判断。
+		return fmt.Errorf("%w: %s", ErrUnauthorized, msg)
 	case 30001:
 		return fmt.Errorf("%w: %s", ErrRateLimited, msg)
 	case 30002:
