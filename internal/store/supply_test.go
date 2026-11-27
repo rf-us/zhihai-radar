@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/rf-us/zhihai-radar/internal/domain"
@@ -116,5 +117,40 @@ func TestSelectQuoteRejectsForeignOpportunity(t *testing.T) {
 	})
 	if err := st.SelectQuote(ctx, oid2, q.ID); err == nil {
 		t.Fatal("跨机会选定应拒绝")
+	}
+}
+
+func TestConcurrentSelectKeepsOneSelected(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	oid := seedOpportunity(t, st)
+	s1, _ := st.CreateSupplier(ctx, supply.Supplier{Name: "甲"})
+	s2, _ := st.CreateSupplier(ctx, supply.Supplier{Name: "乙"})
+	q1, _ := st.CreateQuote(ctx, supply.Quote{OpportunityID: oid, SupplierID: s1.ID, PartName: "x", UnitPrice: 10, Currency: "CNY", MOQ: 1})
+	q2, _ := st.CreateQuote(ctx, supply.Quote{OpportunityID: oid, SupplierID: s2.ID, PartName: "x", UnitPrice: 11, Currency: "CNY", MOQ: 1})
+
+	// 两个 goroutine 同时选不同报价；Store 单连接串行化，部分唯一索引兜底。
+	var wg sync.WaitGroup
+	for _, qid := range []int64{q1.ID, q2.ID} {
+		wg.Add(1)
+		go func(id int64) {
+			defer wg.Done()
+			_ = st.SelectQuote(ctx, oid, id) // 并发下允许一方失败
+		}(qid)
+	}
+	wg.Wait()
+
+	quotes, err := st.ListQuotes(ctx, oid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := 0
+	for _, q := range quotes {
+		if q.Selected {
+			selected++
+		}
+	}
+	if selected != 1 {
+		t.Fatalf("并发选定后应只有一条 selected=1，实际 %d", selected)
 	}
 }

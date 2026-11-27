@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func sampleDoc() Document {
@@ -198,5 +199,29 @@ func TestRenderEightPageSample(t *testing.T) {
 	t.Logf("8 页样例：%s（%d 页，%d 字节）", out, res.Pages, len(res.PDF))
 	if res.Pages < 8 {
 		t.Fatalf("样例应至少 8 页，实际 %d 页", res.Pages)
+	}
+}
+
+func TestFontSubsetWithin3MB(t *testing.T) {
+	if len(fontBytes) > 3*1024*1024 {
+		t.Fatalf("字体子集超过 3MB：%d 字节", len(fontBytes))
+	}
+	if len(fontBytes) < 100*1024 {
+		t.Fatalf("字体子集异常小：%d 字节", len(fontBytes))
+	}
+}
+
+func TestTruncateLongURL(t *testing.T) {
+	long := "https://www.zhihu.com/question/" + strings.Repeat("verylongsegment/", 20) + "answer/999"
+	got := truncate(long, 78)
+	if utf8.RuneCountInString(got) != 78 {
+		t.Fatalf("超长 URL 应截断到 78 字符，got %d", utf8.RuneCountInString(got))
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("截断应有省略号：%s", got)
+	}
+	short := "https://www.zhihu.com/q/1"
+	if truncate(short, 78) != short {
+		t.Fatal("短 URL 不应被截断")
 	}
 }

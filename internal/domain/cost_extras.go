@@ -47,17 +47,17 @@ func EstimateCostWithExtras(lines []CostLine, target *float64, prices []float64,
 	cb.TotalCost = round2(total)
 	// 建议售价来源不变：手工/竞品均价×0.8/成本反推；成本反推时用含附加项的总成本。
 	if cb.PriceSource == "成本反推（保证 40% 毛利）" {
-		cb.Suggested = round2(total / 0.6)
+		cb.Suggested = round2(total / CostReverseMargin)
 	}
 	if cb.Suggested <= 0 {
 		return CostBreakdown{}, false
 	}
 	net := cb.Suggested * (1 - extras.CommissionRate/100)
 	cb.Margin = round4((net - total) / cb.Suggested)
-	if cb.Margin >= 0.40 {
+	if cb.Margin >= MarginFullScore {
 		cb.Score = 100
 	} else {
-		cb.Score = round2(clamp(cb.Margin/0.40*100, 0, 100))
+		cb.Score = round2(clamp(cb.Margin/MarginFullScore*100, 0, 100))
 	}
 	return cb, true
 }
