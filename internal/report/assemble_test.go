@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rf-us/zhihai-radar/internal/dialogue"
 	"github.com/rf-us/zhihai-radar/internal/domain"
 	"github.com/rf-us/zhihai-radar/internal/store"
 )
@@ -12,12 +13,16 @@ import (
 func TestAssembleFixedAndConditionalSections(t *testing.T) {
 	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
 	opp := store.Opportunity{
-		Keyword: "便携咖啡机", Name: "便携咖啡机", Category: "北美",
+		Keyword: "便携咖啡机", Name: "便携咖啡机", Category: "家居小家电",
 		Scores:  domain.Scores{Demand: 80, Pain: 70, Trend: 60, Competition: 30, Confidence: 0.8},
 		Verdict: "需进一步验证", Reasons: []string{"D5 未测算：综合分只覆盖 0.80 的权重"},
 		CreatedAt: now,
+		Analysis:  &store.AnalysisContext{Mode: "fixture", Plan: &dialogue.Plan{Market: "na"}},
 	}
-	doc := Assemble(AssembleInput{Opportunity: opp, Now: now})
+	doc := Assemble(AssembleInput{Opportunity: opp, Now: now.AddDate(0, 0, 1)})
+	if doc.Meta.Market != "北美" || doc.Meta.Source != "离线快照" || doc.Meta.SnapshotAt != "2026-11-27" {
+		t.Fatalf("报告应保留对话市场与本次分析的数据批次：%+v", doc.Meta)
+	}
 	if len(doc.Sections) != 6 {
 		t.Fatalf("无条件章节应为 6 节，got %d", len(doc.Sections))
 	}

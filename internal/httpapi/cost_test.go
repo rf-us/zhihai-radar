@@ -33,7 +33,7 @@ func newCostTestServer(t *testing.T) (*Server, int64) {
 	s.sessions[sid] = &session{token: "t", user: reef.User{Role: reef.RoleAdmin}, expires: time.Now().Add(time.Hour)}
 	o := &store.Opportunity{Keyword: "咖啡机", Name: "咖啡机", Scores: domain.Scores{
 		Demand: 90, Pain: 80, Trend: 70, Competition: 20, Confidence: 0.8,
-	}, Verdict: "需进一步验证"}
+	}, Verdict: "需进一步验证", Reasons: []string{"D5 未测算"}}
 	if err := st.CreateOpportunity(context.Background(), o); err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +74,17 @@ func TestCostSaveRecomputeAndDelete(t *testing.T) {
 	}
 
 	rec = s.doCost(t, http.MethodGet, url, "")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "total_cost") {
+	var saved store.CostRecord
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &saved) != nil ||
+		saved.OpportunityID != oid || saved.Breakdown.Score != 100 {
 		t.Fatalf("get cost: %d %s", rec.Code, rec.Body.String())
+	}
+
+	detailURL := "/api/opportunity?id=" + fmt.Sprint(oid)
+	rec = s.doCost(t, http.MethodGet, detailURL, "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "D5=100.00") ||
+		strings.Contains(rec.Body.String(), "D5 未测算") {
+		t.Fatalf("更新成本后应返回当前 D5 理由：%d %s", rec.Code, rec.Body.String())
 	}
 
 	rec = s.doCost(t, http.MethodDelete, url, "")
@@ -85,6 +94,10 @@ func TestCostSaveRecomputeAndDelete(t *testing.T) {
 	o, _ = s.st.GetOpportunity(context.Background(), oid)
 	if math.Abs(o.Scores.Confidence-0.8) > 1e-9 || o.Verdict != "需进一步验证" {
 		t.Fatalf("删成本后应回 0.8：%+v %s", o.Scores, o.Verdict)
+	}
+	rec = s.doCost(t, http.MethodGet, detailURL, "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "D5 未测算") {
+		t.Fatalf("删除成本后应恢复未测算理由：%d %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -106,13 +106,16 @@ func (s *Store) DeleteCost(ctx context.Context, opportunityID int64) error {
 
 // LatestCost 返回某机会最新一份成本记录；没有则返回 (nil, nil)。
 func (s *Store) LatestCost(ctx context.Context, opportunityID int64) (*CostRecord, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,opportunity_id,bom_json,total_cost,suggested_price,margin,price_source,packaging,freight,commission_rate,created_at
-		FROM cost_model WHERE opportunity_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, opportunityID)
+	row := s.db.QueryRowContext(ctx, `SELECT c.id,c.opportunity_id,c.bom_json,c.total_cost,c.suggested_price,c.margin,c.price_source,
+		c.packaging,c.freight,c.commission_rate,c.created_at,o.score_cost
+		FROM cost_model c JOIN opportunity o ON o.id=c.opportunity_id
+		WHERE c.opportunity_id=? ORDER BY c.created_at DESC,c.id DESC LIMIT 1`, opportunityID)
 	var r CostRecord
 	var bomJSON, created string
 	var cb domain.CostBreakdown
+	var score sql.NullFloat64
 	err := row.Scan(&r.ID, &r.OpportunityID, &bomJSON, &cb.TotalCost, &cb.Suggested, &cb.Margin, &cb.PriceSource,
-		&r.Extras.Packaging, &r.Extras.Freight, &r.Extras.CommissionRate, &created)
+		&r.Extras.Packaging, &r.Extras.Freight, &r.Extras.CommissionRate, &created, &score)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -123,6 +126,7 @@ func (s *Store) LatestCost(ctx context.Context, opportunityID int64) (*CostRecor
 		return nil, fmt.Errorf("store: decode bom_json: %w", err)
 	}
 	r.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	cb.Score = score.Float64
 	r.Breakdown = cb
 	return &r, nil
 }

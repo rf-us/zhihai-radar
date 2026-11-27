@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -23,7 +24,13 @@ func (s *Store) SaveEvidence(ctx context.Context, opportunityID int64, items []E
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck // 提交成功后回滚是空操作
+	if err := saveEvidence(ctx, tx, opportunityID, items); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
+func saveEvidence(ctx context.Context, tx *sql.Tx, opportunityID int64, items []Evidence) error {
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO opportunity_evidence
 		(opportunity_id,source,title,snippet,url,votes,comments,authority,published_at,rank_no)
 		VALUES(?,?,?,?,?,?,?,?,?,?)`)
@@ -42,7 +49,7 @@ func (s *Store) SaveEvidence(ctx context.Context, opportunityID int64, items []E
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) ListEvidence(ctx context.Context, opportunityID int64) ([]Evidence, error) {

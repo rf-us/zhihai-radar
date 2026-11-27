@@ -3,7 +3,9 @@ import { AuthProvider, useAuth } from './auth'
 import { RouterProvider, useRouter } from './router'
 import LoginPage from './pages/LoginPage'
 import Shell from './pages/Shell'
-import { ConversationPage, NotFoundPage, OpportunityPage } from './pages/placeholders'
+import { NotFoundPage } from './pages/placeholders'
+import ConversationPage from './pages/ConversationPage'
+import OpportunityPage from './pages/OpportunityPage'
 import SupplyPage from './pages/SupplyPage'
 import CostPage from './pages/CostPage'
 import ReportPage from './pages/ReportPage'
@@ -36,22 +38,24 @@ function Root() {
     }
   }, [state.status, pathname, search, navigate])
 
-  if (state.status === 'loading') return <Splash />
+  if (state.status === 'loading') {
+    return pathname === '/' ? <Shell><ConversationPage enabled={false} /></Shell> : <Splash />
+  }
   if (state.status === 'anon') return pathname === '/login' ? <LoginPage /> : <Splash />
   if (pathname === '/login') return <Splash />
   return <Shell>{renderRoute(pathname)}</Shell>
 }
 
 function renderRoute(pathname: string) {
-  if (pathname === '/') return <ConversationPage />
+  if (pathname === '/') return <ConversationPage enabled />
   const report = /^\/opportunity\/([^/]+)\/report$/.exec(pathname)
-  if (report) return <ReportPage id={safeDecode(report[1])} />
+  if (report) return <ReportPage key={report[1]} id={safeDecode(report[1])} />
   const supply = /^\/opportunity\/([^/]+)\/supply$/.exec(pathname)
-  if (supply) return <SupplyPage id={safeDecode(supply[1])} />
+  if (supply) return <SupplyPage key={supply[1]} id={safeDecode(supply[1])} />
   const cost = /^\/opportunity\/([^/]+)\/cost$/.exec(pathname)
-  if (cost) return <CostPage id={safeDecode(cost[1])} />
+  if (cost) return <CostPage key={cost[1]} id={safeDecode(cost[1])} />
   const opportunity = /^\/opportunity\/([^/]+)$/.exec(pathname)
-  if (opportunity) return <OpportunityPage id={safeDecode(opportunity[1])} />
+  if (opportunity) return <OpportunityPage key={opportunity[1]} id={safeDecode(opportunity[1])} />
   return <NotFoundPage />
 }
 

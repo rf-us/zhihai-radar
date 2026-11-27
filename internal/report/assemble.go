@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rf-us/zhihai-radar/internal/dialogue"
 	"github.com/rf-us/zhihai-radar/internal/domain"
 	"github.com/rf-us/zhihai-radar/internal/store"
 	"github.com/rf-us/zhihai-radar/internal/supply"
@@ -32,6 +33,7 @@ type AssembleInput struct {
 //   - 条件章节只由 Sections 触发。
 func Assemble(in AssembleInput) Document {
 	opp := in.Opportunity
+	opp.Reasons = opp.ReasonsWithCost(in.Cost)
 	now := in.Now
 	if now.IsZero() {
 		now = opp.CreatedAt
@@ -40,15 +42,31 @@ func Assemble(in AssembleInput) Document {
 		now = time.Now()
 	}
 
+	snapshotAt := opp.CreatedAt
+	if snapshotAt.IsZero() {
+		snapshotAt = now
+	}
+	meta := Meta{
+		GeneratedAt: now.UTC().Format(time.RFC3339),
+		Keyword:     opp.Keyword,
+		Market:      opp.Category,
+		Source:      "知乎开放平台 + 离线快照",
+		SnapshotAt:  snapshotAt.UTC().Format("2006-01-02"),
+	}
+	if opp.Analysis != nil {
+		switch opp.Analysis.Mode {
+		case "fixture":
+			meta.Source = "离线快照"
+		case "zhihu":
+			meta.Source = "知乎开放平台"
+		}
+		if plan := opp.Analysis.Plan; plan != nil && plan.Market != "" {
+			meta.Market = marketLabel(plan.Market)
+		}
+	}
 	doc := Document{
 		Title: opp.Name + " 出海选品调研报告",
-		Meta: Meta{
-			GeneratedAt: now.UTC().Format(time.RFC3339),
-			Keyword:     opp.Keyword,
-			Market:      opp.Category,
-			Source:      "知乎开放平台 + 离线快照",
-			SnapshotAt:  now.UTC().Format("2006-01-02"),
-		},
+		Meta:  meta,
 	}
 
 	// 1 结论摘要
@@ -56,7 +74,7 @@ func Assemble(in AssembleInput) Document {
 	if verdict == "" {
 		verdict = "未出结论"
 	}
-	lead := fmt.Sprintf("综合分 %.1f（覆盖权重 %.0f%%），结论：%s。",
+	lead := fmt.Sprintf("综合分 %.2f（覆盖权重 %.0f%%），结论：%s。",
 		opp.Scores.Overall, opp.Scores.Confidence*100, verdict)
 	if len(opp.Reasons) > 0 {
 		lead += " " + opp.Reasons[0]
@@ -113,7 +131,7 @@ func Assemble(in AssembleInput) Document {
 		cost.Lead = "D5 未测算：本次不给成本结论。补齐成本后可重新生成报告。"
 	} else {
 		cb := in.Cost.Breakdown
-		cost.Lead = fmt.Sprintf("D5 %.0f：单台成本 ¥%.2f，建议售价 ¥%.2f（%s），毛利 %.0f%%。",
+		cost.Lead = fmt.Sprintf("D5 %.2f：单台成本 ¥%.2f，建议售价 ¥%.2f（%s），毛利 %.2f%%。",
 			cb.Score, cb.TotalCost, cb.Suggested, cb.PriceSource, cb.Margin*100)
 		tbl := &Table{Headers: []string{"零件", "数量", "单价", "损耗率", "计费方式"}}
 		for _, line := range in.Cost.BOM {
@@ -199,6 +217,20 @@ func Assemble(in AssembleInput) Document {
 		}
 	}
 	return doc
+}
+
+func marketLabel(value string) string {
+	for _, question := range dialogue.Questions() {
+		if question.Key != "market" {
+			continue
+		}
+		for _, option := range question.Options {
+			if option.Value == value {
+				return option.Label
+			}
+		}
+	}
+	return value
 }
 
 func collectedAt(ev store.Evidence) string {

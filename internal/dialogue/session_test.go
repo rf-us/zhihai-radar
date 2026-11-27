@@ -16,6 +16,14 @@ func TestSessionOneShot(t *testing.T) {
 	}
 }
 
+func TestSessionExtractsExplicitUnknownCategory(t *testing.T) {
+	var s Session
+	reply := s.Turn("品类：手摇磨豆机，卖到欧洲，售价 $50，长期代工")
+	if reply.Kind != KindReady || reply.Plan.Keyword != "手摇磨豆机" {
+		t.Fatalf("explicit category was not used: %+v", reply)
+	}
+}
+
 func TestSessionMultiTurn(t *testing.T) {
 	var s Session
 	steps := []struct {

@@ -6,26 +6,55 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/rf-us/zhihai-radar/internal/dialogue"
 	"github.com/rf-us/zhihai-radar/internal/domain"
 )
 
 var ErrNotFound = errors.New("store: not found")
 
 type Opportunity struct {
-	ID        int64         `json:"id"`
-	Keyword   string        `json:"keyword"`
-	Name      string        `json:"name"`
-	OneLine   string        `json:"one_line"`
-	Category  string        `json:"category"`
-	Scores    domain.Scores `json:"scores"`
-	Verdict   string        `json:"verdict"`
-	Reasons   []string      `json:"reasons"`
-	PainJSON  string        `json:"pain_points_json"`
-	Status    string        `json:"status"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	ID        int64            `json:"id"`
+	Keyword   string           `json:"keyword"`
+	Name      string           `json:"name"`
+	OneLine   string           `json:"one_line"`
+	Category  string           `json:"category"`
+	Scores    domain.Scores    `json:"scores"`
+	Verdict   string           `json:"verdict"`
+	Reasons   []string         `json:"reasons"`
+	PainJSON  string           `json:"pain_points_json"`
+	Status    string           `json:"status"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	Analysis  *AnalysisContext `json:"analysis,omitempty"`
+}
+
+func (o Opportunity) ReasonsWithCost(record *CostRecord) []string {
+	if record == nil || o.Scores.Cost == nil {
+		return o.Reasons
+	}
+	reasons := make([]string, 0, len(o.Reasons)+1)
+	for _, reason := range o.Reasons {
+		if !strings.HasPrefix(reason, "D5 ") && !strings.HasPrefix(reason, "D5=") {
+			reasons = append(reasons, reason)
+		}
+	}
+	cost := record.Breakdown
+	return append(reasons, fmt.Sprintf("D5=%.2f：单台成本 ¥%.2f，建议售价 ¥%.2f（%s），毛利 %.2f%%",
+		*o.Scores.Cost, cost.TotalCost, cost.Suggested, cost.PriceSource, cost.Margin*100))
+}
+
+type AnalysisContext struct {
+	Plan    *dialogue.Plan            `json:"plan,omitempty"`
+	Mode    string                    `json:"mode"`
+	Sources map[string]SourceProgress `json:"sources"`
+}
+
+type SourceProgress struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type Adoption struct {
@@ -43,6 +72,34 @@ type Adoption struct {
 }
 
 func (s *Store) CreateOpportunity(ctx context.Context, o *Opportunity) error {
+	return createOpportunity(ctx, s.db, o)
+}
+
+func (s *Store) SaveAnalysis(ctx context.Context, o *Opportunity, evidence []Evidence) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	saved := *o
+	if err := createOpportunity(ctx, tx, &saved); err != nil {
+		return err
+	}
+	if err := saveEvidence(ctx, tx, saved.ID, evidence); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	*o = saved
+	return nil
+}
+
+type opportunityExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func createOpportunity(ctx context.Context, exec opportunityExecer, o *Opportunity) error {
 	now := time.Now().UTC()
 	if o.CreatedAt.IsZero() {
 		o.CreatedAt = now
@@ -55,6 +112,10 @@ func (s *Store) CreateOpportunity(ctx context.Context, o *Opportunity) error {
 	if err != nil {
 		return err
 	}
+	analysis, err := json.Marshal(o.Analysis)
+	if err != nil {
+		return err
+	}
 	if o.PainJSON == "" {
 		o.PainJSON = "[]"
 	}
@@ -64,26 +125,26 @@ func (s *Store) CreateOpportunity(ctx context.Context, o *Opportunity) error {
 		cost = *o.Scores.Cost
 	}
 
-	res, err := s.db.ExecContext(ctx, `INSERT INTO opportunity
+	res, err := exec.ExecContext(ctx, `INSERT INTO opportunity
 		(keyword,name,one_line,category,score_demand,score_pain,score_trend,score_competition,
-		 score_cost,score_overall,confidence,verdict,reasons_json,pain_points_json,status,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 score_cost,score_overall,confidence,verdict,reasons_json,pain_points_json,status,created_at,updated_at,analysis_context_json)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		o.Keyword, o.Name, o.OneLine, o.Category,
 		o.Scores.Demand, o.Scores.Pain, o.Scores.Trend, o.Scores.Competition,
 		cost, o.Scores.Overall, o.Scores.Confidence, o.Verdict,
 		string(reasons), o.PainJSON, o.Status,
-		o.CreatedAt.Format(time.RFC3339), o.UpdatedAt.Format(time.RFC3339))
+		o.CreatedAt.Format(time.RFC3339), o.UpdatedAt.Format(time.RFC3339), string(analysis))
 	if err != nil {
 		return fmt.Errorf("store: create opportunity: %w", err)
 	}
-	o.ID, _ = res.LastInsertId()
-	return nil
+	o.ID, err = res.LastInsertId()
+	return err
 }
 
 func (s *Store) GetOpportunity(ctx context.Context, id int64) (*Opportunity, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id,keyword,name,one_line,category,
 		score_demand,score_pain,score_trend,score_competition,score_cost,score_overall,confidence,
-		verdict,reasons_json,pain_points_json,status,created_at,updated_at
+		verdict,reasons_json,pain_points_json,status,created_at,updated_at,analysis_context_json
 		FROM opportunity WHERE id=?`, id)
 	return scanOpportunity(row)
 }
@@ -94,7 +155,7 @@ func (s *Store) ListOpportunities(ctx context.Context, limit int) ([]Opportunity
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id,keyword,name,one_line,category,
 		score_demand,score_pain,score_trend,score_competition,score_cost,score_overall,confidence,
-		verdict,reasons_json,pain_points_json,status,created_at,updated_at
+		verdict,reasons_json,pain_points_json,status,created_at,updated_at,analysis_context_json
 		FROM opportunity ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -119,13 +180,13 @@ type scanner interface {
 func scanOpportunity(sc scanner) (*Opportunity, error) {
 	var o Opportunity
 	var cost sql.NullFloat64
-	var reasons string
+	var reasons, analysis string
 	var created, updated string
 
 	err := sc.Scan(&o.ID, &o.Keyword, &o.Name, &o.OneLine, &o.Category,
 		&o.Scores.Demand, &o.Scores.Pain, &o.Scores.Trend, &o.Scores.Competition,
 		&cost, &o.Scores.Overall, &o.Scores.Confidence,
-		&o.Verdict, &reasons, &o.PainJSON, &o.Status, &created, &updated)
+		&o.Verdict, &reasons, &o.PainJSON, &o.Status, &created, &updated, &analysis)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -137,6 +198,9 @@ func scanOpportunity(sc scanner) (*Opportunity, error) {
 		o.Scores.Cost = &v
 	}
 	_ = json.Unmarshal([]byte(reasons), &o.Reasons)
+	if err := json.Unmarshal([]byte(analysis), &o.Analysis); err != nil {
+		return nil, fmt.Errorf("store: read analysis context: %w", err)
+	}
 	o.CreatedAt, _ = time.Parse(time.RFC3339, created)
 	o.UpdatedAt, _ = time.Parse(time.RFC3339, updated)
 	return &o, nil
