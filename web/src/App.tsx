@@ -3,7 +3,10 @@ import { AuthProvider, useAuth } from './auth'
 import { RouterProvider, useRouter } from './router'
 import LoginPage from './pages/LoginPage'
 import Shell from './pages/Shell'
-import { ConversationPage, NotFoundPage, OpportunityPage, ReportPage } from './pages/placeholders'
+import { ConversationPage, NotFoundPage, OpportunityPage } from './pages/placeholders'
+import SupplyPage from './pages/SupplyPage'
+import CostPage from './pages/CostPage'
+import ReportPage from './pages/ReportPage'
 
 export default function App() {
   return (
@@ -43,6 +46,10 @@ function renderRoute(pathname: string) {
   if (pathname === '/') return <ConversationPage />
   const report = /^\/opportunity\/([^/]+)\/report$/.exec(pathname)
   if (report) return <ReportPage id={safeDecode(report[1])} />
+  const supply = /^\/opportunity\/([^/]+)\/supply$/.exec(pathname)
+  if (supply) return <SupplyPage id={safeDecode(supply[1])} />
+  const cost = /^\/opportunity\/([^/]+)\/cost$/.exec(pathname)
+  if (cost) return <CostPage id={safeDecode(cost[1])} />
   const opportunity = /^\/opportunity\/([^/]+)$/.exec(pathname)
   if (opportunity) return <OpportunityPage id={safeDecode(opportunity[1])} />
   return <NotFoundPage />
@@ -72,6 +79,7 @@ export function safeNextPath(next: string | null): string {
   if (pathname === '/') return '/'
   if (/^\/opportunity\/[^/]+$/.test(pathname)) return pathname + url.search
   if (/^\/opportunity\/[^/]+\/report$/.test(pathname)) return pathname + url.search
+  if (/^\/opportunity\/[^/]+\/(supply|cost)$/.test(pathname)) return pathname + url.search
   return '/'
 }
 
