@@ -101,6 +101,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/opportunities/{id}/cost", s.requireSession(s.handleGetCost))
 	mux.HandleFunc("POST /api/opportunities/{id}/cost", s.requireSession(s.handleSaveCost))
 	mux.HandleFunc("DELETE /api/opportunities/{id}/cost", s.requireSession(s.handleDeleteCost))
+	// 报告导出（issue #8）
+	mux.HandleFunc("GET /api/opportunities/{id}/report", s.requireSession(s.handleExportReport))
 	mux.Handle("/", http.FileServer(http.FS(webassets.FS())))
 	return s.withLogging(mux)
 }
