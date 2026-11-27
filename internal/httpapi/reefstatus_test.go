@@ -21,7 +21,7 @@ func TestReefStatusIncludesManagedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}

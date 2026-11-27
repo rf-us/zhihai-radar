@@ -24,7 +24,7 @@ func newCostTestServer(t *testing.T) (*Server, int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
+	t.Cleanup(func() { closeTestStore(t, st) })
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}

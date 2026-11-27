@@ -22,7 +22,7 @@ func TestBuildAdoptInputMapsSupplierAndBOM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -75,11 +75,15 @@ func TestAdoptRequiresCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
-	_ = st.Migrate(context.Background())
+	defer closeTestStore(t, st)
+	if err := st.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	s := New(config.Config{Source: "fixture"}, st)
 	o := &store.Opportunity{Keyword: "x", Name: "x"}
-	_ = st.CreateOpportunity(context.Background(), o)
+	if err := st.CreateOpportunity(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
 	sess := &session{token: "t", user: reef.User{Role: reef.RoleAdmin}, expires: time.Now().Add(time.Hour)}
 	const sid = "adopt-session"
 	s.sessions[sid] = sess
@@ -98,7 +102,7 @@ func TestAdoptBlockedInReadOnlyMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	_ = st.Migrate(context.Background())
 	cfg := config.Config{Source: "fixture", ReadOnly: true}
 	s := New(cfg, st)
@@ -121,7 +125,7 @@ func TestAdoptPreviewRejectsNonAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	_ = st.Migrate(context.Background())
 	s := New(config.Config{Source: "fixture"}, st)
 	const sid = "viewer-session"

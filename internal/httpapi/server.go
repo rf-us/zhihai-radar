@@ -53,6 +53,20 @@ type Server struct {
 	limiter  *rateLimiter
 
 	now func() time.Time
+
+	// OAuth 端点：默认官方地址，测试用 WithOAuthEndpoints 注入假服务。
+	oauthAuthorizeURL string
+	oauthTokenURL     string
+	oauthUserURL      string
+}
+
+// WithOAuthEndpoints 替换知乎 OAuth 端点，供单测用本地假服务。
+func WithOAuthEndpoints(authorize, token, user string) func(*Server) {
+	return func(s *Server) {
+		s.oauthAuthorizeURL = authorize
+		s.oauthTokenURL = token
+		s.oauthUserURL = user
+	}
 }
 
 // WithReefStatus 注入托管运行状态（仅 main 在托管模式调用）。
@@ -71,18 +85,25 @@ func NewWithOptions(cfg config.Config, st *store.Store, opts ...func(*Server)) *
 
 func New(cfg config.Config, st *store.Store) *Server {
 	return &Server{
-		cfg:      cfg,
-		st:       st,
-		reef:     reef.New(cfg.ReefBase).WithDevice(cfg.ReefDeviceID),
-		analyzer: service.NewAnalyzer(buildSource(cfg), st),
-		sessions: make(map[string]*session),
-		now:      time.Now,
-		limiter:  newRateLimiter(time.Now),
+		cfg:               cfg,
+		st:                st,
+		reef:              reef.New(cfg.ReefBase).WithDevice(cfg.ReefDeviceID),
+		analyzer:          service.NewAnalyzer(buildSource(cfg), st),
+		sessions:          make(map[string]*session),
+		now:               time.Now,
+		limiter:           newRateLimiter(time.Now),
+		oauthAuthorizeURL: defaultAuthorizeURL,
+		oauthTokenURL:     defaultTokenURL,
+		oauthUserURL:      defaultUserURL,
 	}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	// 知乎 OAuth（可选；未配置 App ID/Key 时入口隐藏）
+	mux.HandleFunc("GET /api/auth/config", s.handleAuthConfig)
+	mux.HandleFunc("GET /api/auth/zhihu/start", s.handleZhihuAuthStart)
+	mux.HandleFunc("GET /api/auth/zhihu/callback", s.handleZhihuAuthCallback)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
 	mux.HandleFunc("POST /api/session", s.handleLogin)

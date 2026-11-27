@@ -23,7 +23,7 @@ func TestExportReportEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestExportReportRequiresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	s := New(config.Config{Source: "fixture"}, st)
 	req := httptest.NewRequest(http.MethodGet, "/api/opportunities/1/report", strings.NewReader(""))
 	rec := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestFullReportFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestExportReportFilenameContainsKeywordAndDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer closeTestStore(t, st)
 	_ = st.Migrate(context.Background())
 	s := New(config.Config{Source: "fixture"}, st)
 	const sid = "fname-session"
