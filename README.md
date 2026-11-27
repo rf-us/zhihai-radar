@@ -66,6 +66,7 @@ go run ./cmd/radar
 cmd/radar/           入口
 internal/reef/       RFERP 客户端 + 采纳 Saga + 契约测试
 internal/reefhost/   运行环境托管：子进程生命周期 / 指纹发现 / 脱敏
+internal/report/     报告模型 + PDF 渲染（嵌入中文字体子集）
 internal/domain/     五维模型（纯函数，无 IO）
 internal/source/     知乎适配（待建：四接口 / 缓存 / 配额 / fixture）
 internal/store/      SQLite 仓储与版本化迁移
@@ -87,6 +88,7 @@ docs/                ADR 与合规披露
 - [x] 开放式对话与槽位抽取（`internal/dialogue`）：一句话说全即可开跑，缺什么问什么，离题不回答
 - [x] 知乎开放平台四接口客户端（知乎搜索 / 全网搜索 / 热榜 / 直答），无凭证时回落离线快照
 - [x] 离线快照与命令行分析工具 `cmd/analyze`
+- [x] PDF 渲染引擎（纯 Go + 嵌入 Noto Sans SC 子集，缺字替换并计数告警）
 
 进行中：
 
